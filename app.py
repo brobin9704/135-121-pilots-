@@ -841,6 +841,17 @@ def board():
                                or fc["city"].strip().lower() == checkin["city"].strip().lower()):
             nearby.append(f"{esc(fr['name'])} — {checkin_label(fc)}")
     nearby_html = "".join(f"<li>{n}</li>" for n in nearby) or "<li class='muted'>No friends checked in to the same area.</li>"
+    # Check-in history: everything except the current check-in, newest first.
+    all_rows = db.execute(
+        "SELECT * FROM checkins WHERE user_id=? ORDER BY created_at DESC, id DESC", (user["id"],)).fetchall()
+    past = [r for r in all_rows if not checkin or r["id"] != checkin["id"]]
+    if past:
+        items = "".join(
+            f"<li>{checkin_label(r)} <span class='muted'>— {esc(r['start_date'])} to {esc(r['end_date'] or 'open')}</span></li>"
+            for r in past)
+        history_html = f'<div class="card"><h2>Check-in history</h2><ul>{items}</ul></div>'
+    else:
+        history_html = ""
     body = f"""{checkin_html}
       <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
@@ -851,7 +862,7 @@ def board():
       <label>End date (optional)</label><input type="date" name="end_date">
       <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
       <div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>
-      <p><a href="{url_for('friends')}">Manage friends</a></p></div>"""
+      <p><a href="{url_for('friends')}">Manage friends</a></p></div>{history_html}"""
     return page("Check-In", user, body, flash=flash)
 
 # ---------------------------------------------------------------- reviews
