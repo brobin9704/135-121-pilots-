@@ -813,6 +813,7 @@ def index():
     items += f'<a href="{url_for("logout")}" class="logout">Log out ({esc(user["name"])})</a>'
     body = (f'<aside id="drawer" class="static"><div class="drawer_head">PILOTS AND CREW COMMUNITY</div>'
             f'{items}</aside>')
+    body += current_checkin_html(current_checkin(user["id"]))
     return page("Home", user, body, home=True)
 
 # ---------------------------------------------------------------- board
@@ -839,6 +840,32 @@ def nearest_airport():
             best, best_d = (code, city, name), d
     code, city, name = best
     return jsonify({"code": code, "city": city, "name": name, "distance_mi": round(best_d, 1)})
+
+def current_checkin_html(checkin):
+    """Card showing the user's active check-in (hotel/restaurant places link to the review form)."""
+    if not checkin:
+        return '<div class="card"><h2>Current check-in</h2><p class="muted">No active check-in.</p></div>'
+    def _place_link(place, kind):
+        url = (url_for("new_review") + "?" + urllib.parse.urlencode(
+            {"kind": kind, "place": place,
+             "airport": checkin["airport_code"], "city": checkin["city"]}))
+        return f'<a href="{url}">{esc(place)}</a>'
+    status_lines = []
+    if checkin["hotel_place"]:
+        status_lines.append(f"Hotel: {_place_link(checkin['hotel_place'], 'hotel')}")
+    if checkin["restaurant_place"]:
+        status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')}")
+    if not status_lines and checkin["place_name"]:
+        # Legacy rows (pre hotel/restaurant split).
+        status_lines.append(_place_link(checkin["place_name"], checkin["kind"] or "hotel"))
+    status_lines.append(f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}')
+    status_html = "<br>".join(status_lines)
+    return f"""<div class="card"><h2>Current check-in</h2>
+      <p><strong>{status_html}</strong></p>
+      <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
+      <form method="post" action="{url_for('board')}"><input type="hidden" name="action" value="checkout">
+      <button type="submit">Check out</button></form></div>"""
+
 
 @app.route("/board", methods=["GET", "POST"])
 @login_required
@@ -882,29 +909,6 @@ def board():
         db.commit()
         flash = "Checked out."
     checkin = current_checkin(user["id"])
-    if checkin:
-        def _place_link(place, kind):
-            url = (url_for("new_review") + "?" + urllib.parse.urlencode(
-                {"kind": kind, "place": place,
-                 "airport": checkin["airport_code"], "city": checkin["city"]}))
-            return f'<a href="{url}">{esc(place)}</a>'
-        status_lines = []
-        if checkin["hotel_place"]:
-            status_lines.append(f"Hotel: {_place_link(checkin['hotel_place'], 'hotel')}")
-        if checkin["restaurant_place"]:
-            status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')}")
-        if not status_lines and checkin["place_name"]:
-            # Legacy rows (pre hotel/restaurant split).
-            status_lines.append(_place_link(checkin["place_name"], checkin["kind"] or "hotel"))
-        status_lines.append(f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}')
-        status_html = "<br>".join(status_lines)
-        checkin_html = f"""<div class="card"><h2>Current check-in</h2>
-          <p><strong>{status_html}</strong></p>
-          <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
-          <form method="post"><input type="hidden" name="action" value="checkout">
-          <button type="submit">Check out</button></form></div>"""
-    else:
-        checkin_html = '<div class="card"><h2>Current check-in</h2><p class="muted">No active check-in.</p></div>'
     # Friends nearby: matching check-ins only.
     friend_rows = db.execute(
         "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
@@ -943,7 +947,7 @@ def board():
             reviews_html += '<p class="muted">No pilot reviews here yet — be the first.</p></div>'
     else:
         reviews_html = ""
-    body = f"""{checkin_html}
+    body = f"""
       <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
       <form method="post"><input type="hidden" name="action" value="checkin">
