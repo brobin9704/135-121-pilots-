@@ -1,0 +1,753 @@
+"""
+135/121 Pilots - deployable version.
+
+Check-in-only location model:
+  Location is ONLY the airport code and city a pilot types when checking in.
+  There is no device-location feature in this app.
+
+Stack: Flask. SQLite locally, Postgres in production (via DATABASE_URL).
+Run:  python app.py   (or: flask --app app run)
+Production: gunicorn app:app  (see Dockerfile / render.yaml)
+"""
+import math
+import os
+import sqlite3
+import urllib.parse
+import urllib.request
+from datetime import date
+
+from flask import Flask, g, redirect, render_template_string, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me-in-production")
+# Database: Postgres when DATABASE_URL is set (production, e.g. Render),
+# otherwise a local SQLite file (development).
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+DATABASE = os.environ.get("DATABASE_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "pilots.db"))
+USE_POSTGRES = bool(DATABASE_URL)
+
+if USE_POSTGRES:
+    import psycopg2
+    import psycopg2.extras
+    from psycopg2 import IntegrityError as _PGIntegrityError
+    _INTEGRITY_ERRORS = (sqlite3.IntegrityError, _PGIntegrityError)
+else:
+    _INTEGRITY_ERRORS = (sqlite3.IntegrityError,)
+
+USER_AGENT = "135-121-pilots-deployable/1.0"
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+]
+
+COMMON_TAGS = [
+    "quiet rooms", "blackout curtains", "crew shuttle", "open late",
+    "crew rate", "good wifi", "late kitchen", "close to airport",
+]
+
+# ---------------------------------------------------------------- database
+SQLITE_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL, airline TEXT, base TEXT, aircraft TEXT,
+        email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS checkins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        airport_code TEXT NOT NULL, city TEXT NOT NULL,
+        start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS friends (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        friend_id INTEGER NOT NULL REFERENCES users(id),
+        UNIQUE(user_id, friend_id)
+    );
+    CREATE TABLE IF NOT EXISTS reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant')),
+        place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
+        rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+        tags TEXT, notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+"""
+
+POSTGRES_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL, airline TEXT, base TEXT, aircraft TEXT,
+        email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS checkins (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        airport_code TEXT NOT NULL, city TEXT NOT NULL,
+        start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS friends (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        friend_id INTEGER NOT NULL REFERENCES users(id),
+        UNIQUE(user_id, friend_id)
+    );
+    CREATE TABLE IF NOT EXISTS reviews (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant')),
+        place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
+        rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+        tags TEXT, notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+"""
+
+def _translate(sql):
+    # Every query in this file is written with SQLite "?" placeholders.
+    # Postgres wants "%s". (No literal "?" appears inside any query string.)
+    return sql.replace("?", "%s") if USE_POSTGRES else sql
+
+class _PGConn:
+    """Makes a Postgres connection quack like the sqlite3 connections used below
+    (db.execute / db.commit / db.rollback / db.close)."""
+    def __init__(self, conn):
+        self._conn = conn
+    def execute(self, sql, params=()):
+        cur = self._conn.cursor()
+        cur.execute(_translate(sql), params)
+        return cur
+    def commit(self):
+        self._conn.commit()
+    def rollback(self):
+        self._conn.rollback()
+    def close(self):
+        self._conn.close()
+
+def get_db():
+    if "db" not in g:
+        if USE_POSTGRES:
+            g.db = _PGConn(psycopg2.connect(
+                DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor))
+        else:
+            g.db = sqlite3.connect(DATABASE)
+            g.db.row_factory = sqlite3.Row
+    return g.db
+
+@app.teardown_appcontext
+def close_db(_exc=None):
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+
+def init_db():
+    if USE_POSTGRES:
+        conn = psycopg2.connect(DATABASE_URL)
+        try:
+            cur = conn.cursor()
+            cur.execute(POSTGRES_SCHEMA)
+            conn.commit()
+        finally:
+            conn.close()
+    else:
+        db = sqlite3.connect(DATABASE)
+        db.executescript(SQLITE_SCHEMA)
+        db.commit()
+        db.close()
+
+# ---------------------------------------------------------------- helpers
+def current_user():
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    row = get_db().execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    return row
+
+def login_required(view):
+    from functools import wraps
+    @wraps(view)
+    def wrapped(*a, **kw):
+        if not current_user():
+            return redirect(url_for("login"))
+        return view(*a, **kw)
+    return wrapped
+
+def is_current(checkin):
+    if not checkin:
+        return False
+    if checkin["checked_out"]:
+        return False
+    end = checkin["end_date"]
+    if end and end < date.today().isoformat():
+        return False
+    return True
+
+def current_checkin(user_id):
+    rows = get_db().execute(
+        "SELECT * FROM checkins WHERE user_id = ? ORDER BY created_at DESC, id DESC", (user_id,)
+    ).fetchall()
+    for row in rows:
+        if is_current(row):
+            return row
+    return None
+
+def area_matches(checkin, airport_code, city):
+    if not checkin:
+        return False
+    if airport_code and checkin["airport_code"].upper() == airport_code.upper():
+        return True
+    if city and checkin["city"].strip().lower() == city.strip().lower():
+        return True
+    return False
+
+def search_saved_reviews(kind, query, scope, user):
+    """Every word in the query must match somewhere in the haystack."""
+    rows = get_db().execute(
+        """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
+           WHERE r.kind = ? ORDER BY r.created_at DESC, r.id DESC""", (kind,)
+    ).fetchall()
+    words = [w.lower() for w in (query or "").split() if w.strip()]
+    def matches(row):
+        if not words:
+            return True
+        hay = " ".join([
+            row["place_name"] or "", row["airport_code"] or "", row["city"] or "",
+            row["notes"] or "", row["tags"] or "", row["author"] or "",
+        ]).lower()
+        return all(w in hay for w in words)
+    all_results = [r for r in rows if matches(r)]
+    checkin = current_checkin(user["id"]) if user else None
+    if scope == "in" and checkin:
+        in_results = [r for r in all_results
+                      if area_matches(checkin, r["airport_code"], r["city"])]
+        return in_results, all_results, checkin
+    # No check-in, or scope == "all": in-area view is the full list.
+    return all_results, all_results, checkin
+
+def haversine_miles(lat1, lon1, lat2, lon2):
+    r = 3958.8
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+def http_get_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        import json
+        return json.loads(resp.read().decode("utf-8"))
+
+def geocode_place(query):
+    """Resolve a typed place (airport code + city, or city) to lat/lon via OpenStreetMap."""
+    params = urllib.parse.urlencode({"q": query, "format": "json", "limit": 1})
+    try:
+        results = http_get_json(f"{NOMINATIM_URL}?{params}")
+    except Exception:
+        return None
+    if not results:
+        return None
+    first = results[0]
+    return float(first["lat"]), float(first["lon"]), first.get("display_name", query)
+
+def _overpass_one(base, data):
+    import json
+    req = urllib.request.Request(base, data=data, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=45) as resp:
+        return json.loads(resp.read().decode("utf-8")).get("elements", [])
+
+def overpass_query(lat, lon, radius_miles, amenity_filter):
+    """Race all mirrors in parallel; first successful response wins."""
+    import concurrent.futures
+    radius_m = int(radius_miles * 1609.34)
+    ql = (
+        f'[out:json][timeout:30];'
+        f'(node[{amenity_filter}](around:{radius_m},{lat},{lon});'
+        f'way[{amenity_filter}](around:{radius_m},{lat},{lon}););'
+        f'out center tags;'
+    )
+    data = urllib.parse.urlencode({"data": ql}).encode("utf-8")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(OVERPASS_URLS)) as pool:
+        futures = {pool.submit(_overpass_one, base, data): base for base in OVERPASS_URLS}
+        for fut in concurrent.futures.as_completed(futures):
+            try:
+                return fut.result()
+            except Exception:
+                continue
+    raise RuntimeError("listing service unavailable on all mirrors")
+
+def nominatim_fallback(lat, lon, radius_miles, kind, city):
+    """Fallback when Overpass is busy: search by place type near the city, then filter by distance."""
+    term = "hotels" if kind == "hotel" else "restaurants"
+    params = urllib.parse.urlencode({
+        "q": f"{term} near {city}", "format": "json", "limit": 50, "extratags": 1, "addressdetails": 1,
+    })
+    try:
+        results = http_get_json(f"{NOMINATIM_URL}?{params}")
+    except Exception:
+        return []
+    out = []
+    for r in results:
+        try:
+            rlat, rlon = float(r["lat"]), float(r["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        dist = haversine_miles(lat, lon, rlat, rlon)
+        if dist > radius_miles + 0.05:
+            continue
+        extra = r.get("extratags") or {}
+        addr = r.get("address") or {}
+        address = r.get("display_name", "")
+        out.append({
+            "name": r.get("name") or address.split(",")[0], "brand": "",
+            "address": address,
+            "phone": extra.get("phone") or extra.get("contact:phone") or "",
+            "website": extra.get("website") or extra.get("contact:website") or "",
+            "cuisine": extra.get("cuisine", ""), "hours": extra.get("opening_hours", ""),
+            "distance": round(dist, 1),
+        })
+    out.sort(key=lambda x: x["distance"])
+    return out
+
+def places_at_checkin(checkin, radius_miles, kind):
+    """Real OpenStreetMap results around the check-in place. No device location."""
+    if kind == "hotel":
+        filt = 'tourism~"hotel|motel|guest_house|hostel"'
+    else:
+        filt = 'amenity~"restaurant|cafe|fast_food"'
+    centre = None
+    for query in (f"{checkin['airport_code']} airport {checkin['city']}",
+                  f"{checkin['airport_code']} {checkin['city']}",
+                  checkin["city"]):
+        centre = geocode_place(query)
+        if centre:
+            break
+    if not centre:
+        return None, None, "Could not resolve the check-in place. Check the airport code and city, then try again."
+    lat, lon, display = centre
+    try:
+        elements = overpass_query(lat, lon, radius_miles, filt)
+    except Exception:
+        # Overpass mirrors are busy: fall back to a place-type search, filtered by distance.
+        fallback = nominatim_fallback(lat, lon, radius_miles, kind, checkin["city"])
+        if fallback:
+            return (lat, lon, display), fallback, None
+        return (lat, lon, display), [], "Listing service is busy — try again in a moment."
+    seen, results = set(), []
+    for el in elements:
+        tags = el.get("tags", {}) or {}
+        name = tags.get("name")
+        if not name:
+            continue
+        elat = el.get("lat") or (el.get("center") or {}).get("lat")
+        elon = el.get("lon") or (el.get("center") or {}).get("lon")
+        if elat is None or elon is None:
+            continue
+        key = (name.lower(), round(float(elat), 4), round(float(elon), 4))
+        if key in seen:
+            continue
+        seen.add(key)
+        dist = haversine_miles(lat, lon, float(elat), float(elon))
+        if dist > radius_miles + 0.05:
+            continue
+        street = " ".join(x for x in [tags.get("addr:housenumber"), tags.get("addr:street")] if x)
+        addr_parts = [street, tags.get("addr:city"), tags.get("addr:postcode")]
+        results.append({
+            "name": name, "brand": tags.get("brand", ""),
+            "address": ", ".join(p for p in addr_parts if p),
+            "phone": tags.get("phone") or tags.get("contact:phone") or "",
+            "website": tags.get("website") or tags.get("contact:website") or "",
+            "cuisine": tags.get("cuisine", ""),
+            "hours": tags.get("opening_hours", ""),
+            "distance": round(dist, 1),
+        })
+    results.sort(key=lambda r: r["distance"])
+    return (lat, lon, display), results, None
+
+# ---------------------------------------------------------------- rendering
+CSS = """
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
+a{color:#7dd3fc}.wrap{max-width:760px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+nav a,.btn{background:#1e293b;color:#e2e8f0;text-decoration:none;padding:10px 14px;border-radius:10px;border:1px solid #334155;display:inline-block}
+nav a.active{background:#0369a1}
+.card{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:16px;margin:12px 0}
+input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;box-sizing:border-box}
+button,.btn-primary{background:#0284c7;color:#fff;border:0;padding:12px 16px;border-radius:10px;font-size:16px;cursor:pointer;width:100%}
+label{font-weight:600}.muted{color:#94a3b8}.stars{color:#facc15;letter-spacing:2px}
+.tag{display:inline-block;background:#0f172a;border:1px solid #475569;border-radius:999px;padding:2px 10px;margin:2px;font-size:13px}
+.flash{background:#365314;border:1px solid #65a30d;padding:10px;border-radius:10px;margin:12px 0}
+.error{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:12px 0}
+@media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}}
+"""
+
+def page(title, user, body, flash=None, error=None):
+    nav = ""
+    if user:
+        nav = f"""<nav>
+          <a href="{url_for('board')}">Board</a>
+          <a href="{url_for('hotels')}">Hotels</a>
+          <a href="{url_for('restaurants')}">Restaurants</a>
+          <a href="{url_for('friends')}">Friends</a>
+          <a href="{url_for('logout')}">Log out ({user['name']})</a>
+        </nav>"""
+    msg = f'<div class="flash">{flash}</div>' if flash else ""
+    err = f'<div class="error">{error}</div>' if error else ""
+    return render_template_string(f"""<!doctype html><html lang="en"><head>
+      <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>{{{{ title }}}} - 135/121 Pilots</title><style>{CSS}</style></head>
+      <body><div class="wrap"><header><h1>135/121 Pilots</h1></header>{nav}{msg}{err}{body}</div></body></html>""",
+      title=title)
+
+def esc(s):
+    import html
+    return html.escape(str(s or ""))
+
+def stars(n):
+    return "★" * int(n) + "☆" * (5 - int(n))
+
+def review_card(r, user):
+    tags = "".join(f'<span class="tag">{esc(t.strip())}</span>' for t in (r["tags"] or "").split(",") if t.strip())
+    delete = ""
+    if user and r["user_id"] == user["id"]:
+        delete = f"""<form method="post" action="{url_for('delete_review', review_id=r['id'])}" style="margin-top:10px">
+          <button type="submit" style="background:#7f1d1d;width:auto;padding:8px 12px">Delete my review</button></form>"""
+    return f"""<div class="card"><strong>{esc(r['place_name'])}</strong> <span class="stars">{stars(r['rating'])}</span>
+      <div class="muted">{esc(r['airport_code'])} · {esc(r['city'])} · by {esc(r['author'])}</div>
+      <div>{tags}</div><p>{esc(r['notes'])}</p>{delete}</div>"""
+
+def saved_reviews_section(kind, user, q, scope):
+    in_results, all_results, checkin = search_saved_reviews(kind, q, scope, user)
+    label = "hotel" if kind == "hotel" else "restaurant"
+    other_count = 0
+    hint = ""
+    if scope == "in" and checkin and not in_results and all_results:
+        other_count = len(all_results)
+        hint = (f'<div class="card">Found in another area — see all areas. '
+                f'<a href="?q={urllib.parse.quote(q or "")}&scope=all">See all areas ({other_count})</a></div>')
+    scope_links = ""
+    if checkin:
+        scope_links = (f'<p>Scope: <a href="?q={urllib.parse.quote(q or "")}&scope=in">In this area</a> | '
+                       f'<a href="?q={urllib.parse.quote(q or "")}&scope=all">All areas</a> '
+                       f'(current check-in: {esc(checkin["airport_code"])} · {esc(checkin["city"])})</p>')
+    else:
+        scope_links = '<p class="muted">No active check-in — showing all areas. Check in on the Board to scope to your area.</p>'
+    cards = "".join(review_card(r, user) for r in in_results) or '<p class="muted">No saved reviews match yet.</p>'
+    return f"""
+      <div class="card"><h2>Search saved pilot {label} reviews</h2>
+      <form method="get"><label>Search saved pilot {label} reviews</label>
+      <input type="text" name="q" value="{esc(q)}" placeholder="Place, airport code, city, notes, or tag">
+      <input type="hidden" name="scope" value="{esc(scope)}">
+      <button type="submit">Search</button></form>
+      <p class="muted">Searches pilot reviews saved in this app — place name, airport code, city, notes, and tags. Every word must match somewhere.</p>
+      {scope_links}</div>{hint}{cards}"""
+
+# ---------------------------------------------------------------- auth
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        if not name or not email or not password:
+            return page("Register", None, register_form(), error="Name, email, and password are required.")
+        db = get_db()
+        params = (name, request.form.get("airline", "").strip(), request.form.get("base", "").strip(),
+                  request.form.get("aircraft", "").strip(), email, generate_password_hash(password))
+        try:
+            if USE_POSTGRES:
+                cur = db.execute(
+                    "INSERT INTO users (name, airline, base, aircraft, email, password_hash) "
+                    "VALUES (?,?,?,?,?,?) RETURNING id", params)
+                new_id = cur.fetchone()["id"]
+            else:
+                cur = db.execute(
+                    "INSERT INTO users (name, airline, base, aircraft, email, password_hash) VALUES (?,?,?,?,?,?)",
+                    params)
+                new_id = cur.lastrowid
+            db.commit()
+        except _INTEGRITY_ERRORS:
+            db.rollback()
+            return page("Register", None, register_form(), error="That email is already registered. Try logging in.")
+        session["user_id"] = new_id
+        return redirect(url_for("board"))
+    return page("Register", None, register_form())
+
+def register_form():
+    return """<div class="card"><h2>Create a pilot account</h2><p class="muted">Open to all pilots.</p>
+    <form method="post"><label>Name</label><input name="name" required>
+    <label>Airline</label><input name="airline"><label>Base</label><input name="base">
+    <label>Aircraft</label><input name="aircraft"><label>Email</label><input type="email" name="email" required>
+    <label>Password</label><input type="password" name="password" required>
+    <button type="submit">Register</button></form>
+    <p>Already have an account? <a href="/login">Log in</a></p></div>"""
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        row = get_db().execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        if row and check_password_hash(row["password_hash"], request.form.get("password", "")):
+            session["user_id"] = row["id"]
+            return redirect(url_for("board"))
+        return page("Log in", None, login_form(), error="Email or password did not match.")
+    return page("Log in", None, login_form())
+
+def login_form():
+    return """<div class="card"><h2>Log in</h2><form method="post">
+    <label>Email</label><input type="email" name="email" required>
+    <label>Password</label><input type="password" name="password" required>
+    <button type="submit">Log in</button></form>
+    <p>No account yet? <a href="/register">Register</a></p></div>"""
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+@app.route("/")
+def index():
+    return redirect(url_for("board"))
+
+# ---------------------------------------------------------------- board
+@app.route("/board", methods=["GET", "POST"])
+@login_required
+def board():
+    user = current_user()
+    db = get_db()
+    flash = None
+    if request.method == "POST" and request.form.get("action") == "checkin":
+        db.execute(
+            "INSERT INTO checkins (user_id, airport_code, city, start_date, end_date) VALUES (?,?,?,?,?)",
+            (user["id"], request.form.get("airport_code", "").strip().upper(),
+             request.form.get("city", "").strip(), request.form.get("start_date") or date.today().isoformat(),
+             request.form.get("end_date") or None))
+        db.commit()
+        flash = "Checked in."
+    if request.method == "POST" and request.form.get("action") == "checkout":
+        db.execute("UPDATE checkins SET checked_out = 1 WHERE user_id = ? AND checked_out = 0", (user["id"],))
+        db.commit()
+        flash = "Checked out."
+    checkin = current_checkin(user["id"])
+    if checkin:
+        checkin_html = f"""<div class="card"><h2>Current check-in</h2>
+          <p><strong>{esc(checkin['airport_code'])} · {esc(checkin['city'])}</strong></p>
+          <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
+          <form method="post"><input type="hidden" name="action" value="checkout">
+          <button type="submit">Check out</button></form></div>"""
+    else:
+        checkin_html = '<div class="card"><h2>Current check-in</h2><p class="muted">No active check-in.</p></div>'
+    # Friends nearby: matching check-ins only.
+    friend_rows = db.execute(
+        "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
+    ).fetchall()
+    nearby = []
+    for fr in friend_rows:
+        fc = current_checkin(fr["id"])
+        if checkin and fc and (fc["airport_code"].upper() == checkin["airport_code"].upper()
+                               or fc["city"].strip().lower() == checkin["city"].strip().lower()):
+            nearby.append(f"{esc(fr['name'])} — {esc(fc['airport_code'])} · {esc(fc['city'])}")
+    nearby_html = "".join(f"<li>{n}</li>" for n in nearby) or "<li class='muted'>No friends checked in to the same area.</li>"
+    body = f"""{checkin_html}
+      <div class="card"><h2>Check in</h2><p class="muted">Type the airport code and city. This is the only location this app uses.</p>
+      <form method="post"><input type="hidden" name="action" value="checkin">
+      <label>Airport code</label><input name="airport_code" placeholder="KTUL" required>
+      <label>City</label><input name="city" placeholder="Tulsa" required>
+      <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
+      <label>End date (optional)</label><input type="date" name="end_date">
+      <button type="submit">Check in</button></form></div>
+      <div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>
+      <p><a href="{url_for('friends')}">Manage friends</a></p></div>"""
+    return page("Board", user, body, flash=flash)
+
+# ---------------------------------------------------------------- reviews
+@app.route("/reviews/new", methods=["GET", "POST"])
+@login_required
+def new_review():
+    user = current_user()
+    checkin = current_checkin(user["id"])
+    if request.method == "POST":
+        kind = request.form.get("kind", "hotel")
+        if kind not in ("hotel", "restaurant"):
+            kind = "hotel"
+        chosen = request.form.getlist("tag")
+        custom = request.form.get("custom_tags", "").strip()
+        tags = ", ".join([t for t in chosen] + ([custom] if custom else []))
+        db = get_db()
+        db.execute(
+            "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, rating, tags, notes) VALUES (?,?,?,?,?,?,?,?)",
+            (user["id"], kind, request.form.get("place_name", "").strip(),
+             request.form.get("airport_code", "").strip().upper(), request.form.get("city", "").strip(),
+             int(request.form.get("rating", 5)), tags, request.form.get("notes", "").strip()))
+        db.commit()
+        return redirect(url_for("hotels" if kind == "hotel" else "restaurants"))
+    kind = request.args.get("kind", "hotel")
+    place = request.args.get("place", "")
+    airport = request.args.get("airport", checkin["airport_code"] if checkin else "")
+    city = request.args.get("city", checkin["city"] if checkin else "")
+    boxes = "".join(
+        f'<label><input type="checkbox" name="tag" value="{esc(t)}" style="width:auto"> {esc(t)}</label><br>' for t in COMMON_TAGS)
+    body = f"""<div class="card"><h2>Add a {esc(kind)} review</h2>
+      <form method="post"><input type="hidden" name="kind" value="{esc(kind)}">
+      <label>Place name</label><input name="place_name" value="{esc(place)}" required>
+      <label>Airport code</label><input name="airport_code" value="{esc(airport)}">
+      <label>City</label><input name="city" value="{esc(city)}">
+      <label>Star rating</label><select name="rating">
+      <option value="5">5 stars</option><option value="4">4 stars</option><option value="3">3 stars</option>
+      <option value="2">2 stars</option><option value="1">1 star</option></select>
+      <label>Pilot tags</label><div>{boxes}</div>
+      <label>Other tags (comma-separated)</label><input name="custom_tags">
+      <label>Notes</label><textarea name="notes" rows="4"></textarea>
+      <button type="submit">Save review</button></form></div>"""
+    return page("Add review", user, body)
+
+@app.route("/reviews/<int:review_id>/delete", methods=["POST"])
+@login_required
+def delete_review(review_id):
+    user = current_user()
+    db = get_db()
+    db.execute("DELETE FROM reviews WHERE id = ? AND user_id = ?", (review_id, user["id"]))
+    db.commit()
+    return redirect(url_for("board"))
+
+# ---------------------------------------------------------------- hotels / restaurants
+def at_location_section(kind, user, radius_options, default_radius):
+    """The 'at my location' card. Location = check-in only."""
+    checkin = current_checkin(user["id"])
+    if not checkin:
+        return ('<div class="card"><h2>Search ' + kind + 's at my location</h2>'
+                '<p>Check in on the <a href="' + url_for("board") + '">Board</a> first, '
+                'then come back here to search around your check-in location.</p></div>', None, None)
+    radius_raw = request.args.get("radius", str(default_radius))
+    try:
+        radius = int(radius_raw)
+    except ValueError:
+        radius = default_radius
+    radius = max(1, min(radius, 20 if kind == "restaurant" else 10))
+    # Hotels: 2/5/10. Restaurants: 5/10/20, default 20, capped at 20.
+    if kind == "restaurant":
+        radius_options = [5, 10, 20]
+        radius = max(1, min(radius, 20))
+    radios = "".join(
+        f'<label><input type="radio" name="radius" value="{r}" style="width:auto" {"checked" if r == radius else ""}> {r} miles</label> '
+        for r in radius_options)
+    card = f"""<div class="card"><h2>Search {kind}s at my location</h2>
+      <p class="muted">Uses your check-in location: {esc(checkin['airport_code'])} · {esc(checkin['city'])}. No other location is used.</p>
+      <form method="get"><input type="hidden" name="at_checkin" value="1">{radios}
+      <button type="submit">Search {kind}s at my location</button></form></div>"""
+    if request.args.get("at_checkin") != "1":
+        return card, None, None
+    centre, results, error = places_at_checkin(checkin, radius, kind)
+    return card, (centre, results, error, radius, checkin), checkin
+
+def external_results_html(kind, data, user):
+    centre, results, error, radius, checkin = data
+    if error and not results:
+        return f'<div class="error">{esc(error)}</div>'
+    if centre:
+        lat, lon, display = centre
+        header = f"<h2>{len(results)} {kind}s within {radius} mi of {esc(display)}</h2>"
+    else:
+        header = f"<h2>{len(results)} {kind}s within {radius} mi</h2>"
+    if not results:
+        return header + '<p class="muted">No places found in that radius.</p>'
+    cards = ""
+    for r in results:
+        detail = ""
+        if kind == "hotel":
+            detail = f"<div>Brand: {esc(r['brand'] or r['name'])}</div>"
+        else:
+            detail = f"<div>Cuisine: {esc(r['cuisine'])}</div><div>Hours: {esc(r['hours'])}</div>"
+        web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
+        add = (url_for("new_review") + "?" + urllib.parse.urlencode(
+            {"kind": kind, "place": r["name"], "airport": checkin["airport_code"], "city": checkin["city"]}))
+        cards += f"""<div class="card"><strong>{esc(r['name'])}</strong> <span class="muted">{r['distance']} mi</span>
+          {detail}<div>Address: {esc(r['address'])}</div><div>Phone: {esc(r['phone'])}</div>{web}
+          <p><a href="{add}">Add review</a></p></div>"""
+    return header + cards
+
+@app.route("/hotels")
+@login_required
+def hotels():
+    user = current_user()
+    q = request.args.get("q", "")
+    scope = request.args.get("scope", "in")
+    card, data, _ = at_location_section("hotel", user, [2, 5, 10], 5)
+    ext = external_results_html("hotel", data, user) if data else ""
+    body = card + ext + saved_reviews_section("hotel", user, q, scope)
+    return page("Hotels", user, body)
+
+@app.route("/restaurants")
+@login_required
+def restaurants():
+    user = current_user()
+    q = request.args.get("q", "")
+    scope = request.args.get("scope", "in")
+    card, data, _ = at_location_section("restaurant", user, [5, 10, 20], 20)
+    ext = external_results_html("restaurant", data, user) if data else ""
+    body = card + ext + saved_reviews_section("restaurant", user, q, scope)
+    return page("Restaurants", user, body)
+
+# ---------------------------------------------------------------- friends
+@app.route("/friends", methods=["GET", "POST"])
+@login_required
+def friends():
+    user = current_user()
+    db = get_db()
+    flash = None
+    if request.method == "POST":
+        friend_id = request.form.get("friend_id")
+        if friend_id:
+            fid = int(friend_id)
+            if USE_POSTGRES:
+                db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
+                           "ON CONFLICT (user_id, friend_id) DO NOTHING", (user["id"], fid))
+                db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
+                           "ON CONFLICT (user_id, friend_id) DO NOTHING", (fid, user["id"]))
+            else:
+                db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (user["id"], fid))
+                db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (fid, user["id"]))
+            db.commit()
+            flash = "Friend added."
+    rows = db.execute(
+        "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
+    ).fetchall()
+    checkin = current_checkin(user["id"])
+    items = ""
+    for fr in rows:
+        fc = current_checkin(fr["id"])
+        nearby = ""
+        if checkin and fc and area_matches(checkin, fc["airport_code"], fc["city"]):
+            nearby = f' — <strong>nearby: {esc(fc["airport_code"])} · {esc(fc["city"])}</strong>'
+        elif fc:
+            nearby = f' — checked in: {esc(fc["airport_code"])} · {esc(fc["city"])}'
+        else:
+            nearby = ' — no active check-in'
+        items += f"<li>{esc(fr['name'])} ({esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}</li>"
+    others = db.execute(
+        "SELECT * FROM users WHERE id != ? AND id NOT IN (SELECT friend_id FROM friends WHERE user_id = ?)",
+        (user["id"], user["id"])).fetchall()
+    options = "".join(f'<option value="{o["id"]}">{esc(o["name"])} ({esc(o["email"])})</option>' for o in others)
+    body = f"""<div class="card"><h2>Friends</h2>
+      <p class="muted">Friends show as nearby only when their check-in matches yours.</p>
+      <ul>{items or '<li class="muted">No friends yet.</li>'}</ul></div>
+      <div class="card"><h2>Add a friend</h2><form method="post">
+      <label>Choose a pilot</label><select name="friend_id">{options}</select>
+      <button type="submit">Add friend</button></form></div>"""
+    return page("Friends", user, body, flash=flash)
+
+if __name__ == "__main__":
+    init_db()
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port)
+else:
+    init_db()

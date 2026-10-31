@@ -1,0 +1,27 @@
+# Render Blueprint: one-click production deploy of 135/121 Pilots.
+#
+# Usage:
+#   1. Push this folder to a GitHub repository (include this file).
+#   2. In Render: New -> Blueprint -> select the repository -> Apply.
+#
+# Render provisions the web service (Docker, served by gunicorn) and a
+# managed Postgres database, wires DATABASE_URL automatically, and
+# generates SECRET_KEY. Pilot data lives in Postgres, so accounts,
+# reviews, friends, and check-ins survive restarts and redeploys.
+services:
+  - type: web
+    name: pilots-135-121
+    runtime: docker
+    plan: free
+    healthCheckPath: /login
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pilots-db
+          property: connectionString
+
+databases:
+  - name: pilots-db
+    plan: free
