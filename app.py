@@ -737,12 +737,17 @@ def friends():
         "SELECT * FROM users WHERE id != ? AND id NOT IN (SELECT friend_id FROM friends WHERE user_id = ?)",
         (user["id"], user["id"])).fetchall()
     options = "".join(f'<option value="{o["id"]}">{esc(o["name"])} ({esc(o["email"])})</option>' for o in others)
+    if others:
+        add_card = (f'<div class="card"><h2>Add a friend</h2><form method="post">'
+                    f'<label>Choose a pilot</label><select name="friend_id">{options}</select>'
+                    f'<button type="submit">Add friend</button></form></div>')
+    else:
+        add_card = ('<div class="card"><h2>Add a friend</h2>'
+                    '<p class="muted">No more pilots to add — everyone here is already your friend.</p></div>')
     body = f"""<div class="card"><h2>Friends</h2>
       <p class="muted">Friends show as nearby only when their check-in matches yours.</p>
       <ul>{items or '<li class="muted">No friends yet.</li>'}</ul></div>
-      <div class="card"><h2>Add a friend</h2><form method="post">
-      <label>Choose a pilot</label><select name="friend_id">{options}</select>
-      <button type="submit">Add friend</button></form></div>"""
+      {add_card}"""
     return page("Friends", user, body, flash=flash)
 
 if __name__ == "__main__":
