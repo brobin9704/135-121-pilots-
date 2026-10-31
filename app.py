@@ -517,6 +517,10 @@ body.menu_open #drawer{transform:none}
 #drawer a.active{background:#0369a1}
 #drawer a.logout{color:#94a3b8}
 #drawer.static{position:static;transform:none;border:1px solid #334155;border-radius:14px}
+.home_layout{display:flex;gap:16px;align-items:flex-start}
+.home_layout #drawer.static{flex:none}
+.home_main{flex:1;min-width:0}
+@media (max-width:640px){.home_layout{flex-direction:column}}
 .home_btn{margin-left:auto;background:#1e293b;border:1px solid #334155;border-radius:10px;width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center}
 .home_menu{max-width:320px}
 .home_menu a{display:block;background:#1e293b;border:1px solid #334155;color:#e2e8f0;text-decoration:none;padding:16px;border-radius:12px;margin:10px 0;font-size:17px;font-weight:700}
@@ -812,12 +816,13 @@ def index():
              ("My Profile", url_for("profile"))]
     items = "".join(f'<a href="{u}">{t}</a>' for t, u in links)
     items += f'<a href="{url_for("logout")}" class="logout">Log out ({esc(user["name"])})</a>'
-    body = (f'<aside id="drawer" class="static"><div class="drawer_head">PILOTS AND CREW COMMUNITY</div>'
+    menu = (f'<aside id="drawer" class="static"><div class="drawer_head">PILOTS AND CREW COMMUNITY</div>'
             f'{items}</aside>')
     checkin = current_checkin(user["id"])
-    body += current_checkin_html(checkin)
-    body += friends_nearby_html(db, user, checkin)
-    body += area_reviews_html(db, user, checkin)
+    main = (current_checkin_html(checkin)
+            + friends_nearby_html(db, user, checkin)
+            + area_reviews_html(db, user, checkin))
+    body = f'<div class="home_layout">{menu}<div class="home_main">{main}</div></div>'
     return page("Home", user, body, home=True)
 
 # ---------------------------------------------------------------- board
