@@ -516,6 +516,7 @@ body.menu_open #drawer{transform:none}
 #drawer a{display:block;padding:11px 16px;color:#e2e8f0;text-decoration:none;font-size:15px}
 #drawer a.active{background:#0369a1}
 #drawer a.logout{color:#94a3b8}
+.home_btn{margin-left:auto;background:#1e293b;border:1px solid #334155;border-radius:10px;width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center}
 @media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}}
 """
 
@@ -585,7 +586,8 @@ def page(title, user, body, flash=None, error=None):
             f'<a href="{u}" class="{"active" if t == title else ""}">{t}</a>' for t, u in links)
         items += f'<a href="{url_for("logout")}" class="logout">Log out ({esc(user["name"])})</a>'
         chrome = f"""<div class="appbar"><button id="menu_btn" aria-label="Open menu"><span></span><span></span><span></span></button>
-          <span class="appbar_title">{esc(title)}</span></div>
+          <span class="appbar_title">{esc(title)}</span>
+          <a href="{url_for('board')}" class="home_btn" aria-label="Home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg></a></div>
         <div id="scrim"></div><aside id="drawer"><div class="drawer_head">PILOTS AND CREW COMMUNITY</div>{items}</aside>
         <script>
         document.getElementById('menu_btn').addEventListener('click',function(){{document.body.classList.add('menu_open')}});
