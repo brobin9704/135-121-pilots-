@@ -404,7 +404,7 @@ label{font-weight:600}.muted{color:#94a3b8}.stars{color:#facc15;letter-spacing:2
 @media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}}
 """
 
-# Auto-fills the city when an airport code is typed on the Board check-in form.
+# Auto-fills the city when an airport code is typed on the Check-In form.
 # Data: static/airports.json (OurAirports, public domain; large + medium airports).
 AUTOFILL_JS = """<script>
 (function(){
@@ -431,7 +431,7 @@ def page(title, user, body, flash=None, error=None):
     nav = ""
     if user:
         nav = f"""<nav>
-          <a href="{url_for('board')}">Board</a>
+          <a href="{url_for('board')}">Check-In</a>
           <a href="{url_for('hotels')}">Hotels</a>
           <a href="{url_for('restaurants')}">Restaurants</a>
           <a href="{url_for('friends')}">Friends</a>
@@ -477,7 +477,7 @@ def saved_reviews_section(kind, user, q, scope):
                        f'<a href="?q={urllib.parse.quote(q or "")}&scope=all">All areas</a> '
                        f'(current check-in: {esc(checkin["airport_code"])} · {esc(checkin["city"])})</p>')
     else:
-        scope_links = '<p class="muted">No active check-in — showing all areas. Check in on the Board to scope to your area.</p>'
+        scope_links = '<p class="muted">No active check-in — showing all areas. Check in on the Check-In page to scope to your area.</p>'
     cards = "".join(review_card(r, user) for r in in_results) or '<p class="muted">No saved reviews match yet.</p>'
     return f"""
       <div class="card"><h2>Search saved pilot {label} reviews</h2>
@@ -604,7 +604,7 @@ def board():
       <button type="submit">Check in</button></form></div>{AUTOFILL_JS}
       <div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>
       <p><a href="{url_for('friends')}">Manage friends</a></p></div>"""
-    return page("Board", user, body, flash=flash)
+    return page("Check-In", user, body, flash=flash)
 
 # ---------------------------------------------------------------- reviews
 @app.route("/reviews/new", methods=["GET", "POST"])
@@ -662,7 +662,7 @@ def at_location_section(kind, user, radius_options, default_radius):
     checkin = current_checkin(user["id"])
     if not checkin:
         return ('<div class="card"><h2>Search ' + kind + 's at my location</h2>'
-                '<p>Check in on the <a href="' + url_for("board") + '">Board</a> first, '
+                '<p>Check in on the <a href="' + url_for("board") + '">Check-In</a> first, '
                 'then come back here to search around your check-in location.</p></div>', None, None)
     radius_raw = request.args.get("radius", str(default_radius))
     try:
