@@ -806,6 +806,7 @@ def profile_form(user):
 @login_required
 def index():
     user = current_user()
+    db = get_db()
     links = [("Check-In", url_for("board")), ("Hotels", url_for("hotels")),
              ("Restaurants", url_for("restaurants")), ("Friends", url_for("friends")),
              ("My Profile", url_for("profile"))]
@@ -813,7 +814,10 @@ def index():
     items += f'<a href="{url_for("logout")}" class="logout">Log out ({esc(user["name"])})</a>'
     body = (f'<aside id="drawer" class="static"><div class="drawer_head">PILOTS AND CREW COMMUNITY</div>'
             f'{items}</aside>')
-    body += current_checkin_html(current_checkin(user["id"]))
+    checkin = current_checkin(user["id"])
+    body += current_checkin_html(checkin)
+    body += friends_nearby_html(db, user, checkin)
+    body += area_reviews_html(db, user, checkin)
     return page("Home", user, body, home=True)
 
 # ---------------------------------------------------------------- board
@@ -867,6 +871,41 @@ def current_checkin_html(checkin):
       <button type="submit">Check out</button></form></div>"""
 
 
+def friends_nearby_html(db, user, checkin):
+    """Friends whose current check-in matches the user's check-in area."""
+    friend_rows = db.execute(
+        "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
+    ).fetchall()
+    nearby = []
+    for fr in friend_rows:
+        fc = current_checkin(fr["id"])
+        if checkin and fc and (fc["airport_code"].upper() == checkin["airport_code"].upper()
+                               or fc["city"].strip().lower() == checkin["city"].strip().lower()):
+            nearby.append(f"{esc(fr['name'])} — {checkin_label(fc)}")
+    nearby_html = "".join(f"<li>{n}</li>" for n in nearby) or "<li class='muted'>No friends checked in to the same area.</li>"
+    return (f'<div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>'
+            f'<p><a href="{url_for("friends")}">Manage friends</a></p></div>')
+
+
+def area_reviews_html(db, user, checkin):
+    """Newest pilot reviews in the user's check-in area."""
+    if not checkin:
+        return ""
+    rev_rows = db.execute(
+        """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
+           WHERE upper(r.airport_code) = ? OR lower(r.city) = ?
+           ORDER BY r.created_at DESC, r.id DESC LIMIT 20""",
+        ((checkin["airport_code"] or "").upper(), (checkin["city"] or "").strip().lower())).fetchall()
+    html = '<div class="card"><h2>Pilot reviews in this area</h2>'
+    if rev_rows:
+        html += (f'<p class="muted">{len(rev_rows)} reviews at '
+                 f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}</p></div>')
+        html += "".join(review_card(r, user) for r in rev_rows)
+    else:
+        html += '<p class="muted">No pilot reviews here yet — be the first.</p></div>'
+    return html
+
+
 @app.route("/board", methods=["GET", "POST"])
 @login_required
 def board():
@@ -909,17 +948,6 @@ def board():
         db.commit()
         flash = "Checked out."
     checkin = current_checkin(user["id"])
-    # Friends nearby: matching check-ins only.
-    friend_rows = db.execute(
-        "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
-    ).fetchall()
-    nearby = []
-    for fr in friend_rows:
-        fc = current_checkin(fr["id"])
-        if checkin and fc and (fc["airport_code"].upper() == checkin["airport_code"].upper()
-                               or fc["city"].strip().lower() == checkin["city"].strip().lower()):
-            nearby.append(f"{esc(fr['name'])} — {checkin_label(fc)}")
-    nearby_html = "".join(f"<li>{n}</li>" for n in nearby) or "<li class='muted'>No friends checked in to the same area.</li>"
     # Check-in history: everything except the current check-in, newest first.
     all_rows = db.execute(
         "SELECT * FROM checkins WHERE user_id=? ORDER BY created_at DESC, id DESC", (user["id"],)).fetchall()
@@ -931,22 +959,6 @@ def board():
         history_html = f'<div class="card"><h2>Check-in history</h2><ul>{items}</ul></div>'
     else:
         history_html = ""
-    # Pilot reviews in the current check-in area, newest first.
-    if checkin:
-        rev_rows = db.execute(
-            """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
-               WHERE upper(r.airport_code) = ? OR lower(r.city) = ?
-               ORDER BY r.created_at DESC, r.id DESC LIMIT 20""",
-            ((checkin["airport_code"] or "").upper(), (checkin["city"] or "").strip().lower())).fetchall()
-        reviews_html = '<div class="card"><h2>Pilot reviews in this area</h2>'
-        if rev_rows:
-            reviews_html += (f'<p class="muted">{len(rev_rows)} reviews at '
-                             f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}</p></div>')
-            reviews_html += "".join(review_card(r, user) for r in rev_rows)
-        else:
-            reviews_html += '<p class="muted">No pilot reviews here yet — be the first.</p></div>'
-    else:
-        reviews_html = ""
     body = f"""
       <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
@@ -956,8 +968,7 @@ def board():
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
       <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
-      <div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>
-      <p><a href="{url_for('friends')}">Manage friends</a></p></div>{reviews_html}{history_html}"""
+      {friends_nearby_html(db, user, checkin)}{area_reviews_html(db, user, checkin)}{history_html}"""
     return page("Check-In", user, body, flash=flash)
 
 # ---------------------------------------------------------------- reviews
