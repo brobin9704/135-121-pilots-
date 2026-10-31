@@ -705,6 +705,13 @@ def friends():
     db = get_db()
     flash = None
     if request.method == "POST":
+        remove_id = request.form.get("remove_id")
+        if remove_id:
+            rid = int(remove_id)
+            db.execute("DELETE FROM friends WHERE (user_id=? AND friend_id=?) OR (user_id=? AND friend_id=?)",
+                       (user["id"], rid, rid, user["id"]))
+            db.commit()
+            flash = "Friend removed."
         friend_id = request.form.get("friend_id")
         if friend_id:
             fid = int(friend_id)
@@ -732,7 +739,11 @@ def friends():
             nearby = f' — checked in: {esc(fc["airport_code"])} · {esc(fc["city"])}'
         else:
             nearby = ' — no active check-in'
-        items += f"<li>{esc(fr['name'])} ({esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}</li>"
+        items += (f"<li>{esc(fr['name'])} ({esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
+                  f' <form method="post" style="display:inline;margin-left:8px">'
+                  f'<input type="hidden" name="remove_id" value="{fr["id"]}">'
+                  f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px">Remove</button>'
+                  f"</form></li>")
     others = db.execute(
         "SELECT * FROM users WHERE id != ? AND id NOT IN (SELECT friend_id FROM friends WHERE user_id = ?)",
         (user["id"], user["id"])).fetchall()
