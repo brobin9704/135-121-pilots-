@@ -458,10 +458,9 @@ def review_card(r, user):
     if user and r["user_id"] == user["id"]:
         delete = f"""<form method="post" action="{url_for('delete_review', review_id=r['id'])}" style="margin-top:10px">
           <button type="submit" style="background:#7f1d1d;width:auto;padding:8px 12px">Delete my review</button></form>"""
-    add = (url_for("new_review") + "?" + urllib.parse.urlencode(
-        {"kind": r["kind"], "place": r["place_name"] or "",
-         "airport": r["airport_code"] or "", "city": r["city"] or ""}))
-    return f"""<div class="card"><a href="{add}"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>
+    loc_query = ", ".join(p for p in [r["place_name"] or "", r["city"] or ""] if p)
+    loc_url = "https://www.openstreetmap.org/search?" + urllib.parse.urlencode({"query": loc_query})
+    return f"""<div class="card"><a href="{loc_url}" target="_blank" rel="noopener"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>
       <div class="muted">{esc(r['airport_code'])} · {esc(r['city'])} · by {esc(r['author'])}</div>
       <div>{tags}</div><p>{esc(r['notes'])}</p>{delete}</div>"""
 
