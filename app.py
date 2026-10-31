@@ -1,5 +1,5 @@
 """
-Pilots & Crew - deployable version.
+Pilots and Crew Community - deployable version.
 
 Check-in-only location model:
   Location is ONLY the airport code and city a pilot types when checking in.
@@ -530,8 +530,8 @@ def page(title, user, body, flash=None, error=None):
     err = f'<div class="error">{error}</div>' if error else ""
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>{{{{ title }}}} - Pilots &amp; Crew</title><style>{CSS}</style></head>
-      <body><div class="wrap"><header><h1>Pilots &amp; Crew</h1></header>{nav}{msg}{err}{body}</div></body></html>""",
+      <title>{{{{ title }}}} - Pilots and Crew Community</title><style>{CSS}</style></head>
+      <body><div class="wrap"><header><h1>Pilots and Crew Community</h1></header>{nav}{msg}{err}{body}</div></body></html>""",
       title=title)
 
 def esc(s):
@@ -635,7 +635,7 @@ def login_page(error=None):
     err = f'<div class="error">{error}</div>' if error else ""
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Log in - Pilots &amp; Crew</title><style>
+      <title>Log in - Pilots and Crew Community</title><style>
       body{{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e2e8f0;
         min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}}
       .bg{{position:fixed;inset:0;background:url('{url_for("static", filename="login-bg.jpg")}') center/cover no-repeat}}
@@ -654,8 +654,8 @@ def login_page(error=None):
       .reg a{{color:#7dd3fc}}
       .error{{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:0 0 14px}}
       </style></head><body><div class="bg"></div><div class="scrim"></div>
-      <div class="card"><h1>Pilots &amp; Crew</h1>
-      <p class="tag">Pilots &amp; Crew is where pilots share real layover intel. Check in at your overnight, leave your honest opinion of the hotels and restaurants nearby, and read what other pilots thought before you book, eat, or sleep.</p>
+      <div class="card"><h1>Pilots and Crew Community</h1>
+      <p class="tag">The Pilots and Crew Community App is where pilots share real layover intel. Check in at your overnight, leave your honest opinion of the hotels and restaurants nearby, and read what other pilots thought before you book, eat, or sleep.</p>
       {err}<form method="post">
       <label>Email</label><input type="email" name="email" required autocomplete="email">
       <label>Password</label><input type="password" name="password" required autocomplete="current-password">
