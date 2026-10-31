@@ -66,9 +66,14 @@ OVERPASS_URLS = [
     "https://overpass.private.coffee/api/interpreter",
 ]
 
-COMMON_TAGS = [
-    "quiet rooms", "blackout curtains", "crew shuttle", "open late",
-    "crew rate", "good wifi", "late kitchen", "close to airport",
+HOTEL_TAGS = [
+    "quiet rooms", "blackout curtains", "crew shuttle", "crew rate",
+    "good wifi", "free breakfast", "gym", "close to airport",
+]
+
+RESTAURANT_TAGS = [
+    "open late", "late kitchen", "crew discount", "walking distance",
+    "fast service", "healthy options", "good breakfast", "crew friendly",
 ]
 
 # Airport coordinates for the "Find me" button (server-side only; OurAirports,
@@ -938,8 +943,9 @@ def new_review():
     place = request.args.get("place", "")
     airport = request.args.get("airport", checkin["airport_code"] if checkin else "")
     city = request.args.get("city", checkin["city"] if checkin else "")
+    tag_list = RESTAURANT_TAGS if kind == "restaurant" else HOTEL_TAGS
     boxes = "".join(
-        f'<label><input type="checkbox" name="tag" value="{esc(t)}" style="width:auto"> {esc(t)}</label><br>' for t in COMMON_TAGS)
+        f'<label><input type="checkbox" name="tag" value="{esc(t)}" style="width:auto"> {esc(t)}</label><br>' for t in tag_list)
     body = f"""<div class="card"><h2>Add a {esc(kind)} review</h2>
       <form method="post" enctype="multipart/form-data"><input type="hidden" name="kind" value="{esc(kind)}">
       <label>Place name</label><input name="place_name" value="{esc(place)}" required>
