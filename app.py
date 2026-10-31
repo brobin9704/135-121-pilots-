@@ -582,8 +582,20 @@ FINDME_JS = """<script>
 def page(title, user, body, flash=None, error=None, home=False):
     chrome = ""
     if user and not home:
-        chrome = f"""<div class="appbar"><span class="appbar_title">{esc(title)}</span>
-          <a href="{url_for('index')}" class="home_btn" aria-label="Home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg></a></div>"""
+        links = [("Check-In", url_for("board")), ("Hotels", url_for("hotels")),
+                 ("Restaurants", url_for("restaurants")), ("Friends", url_for("friends")),
+                 ("My Profile", url_for("profile"))]
+        items = "".join(
+            f'<a href="{u}" class="{"active" if t == title else ""}">{t}</a>' for t, u in links)
+        items += f'<a href="{url_for("logout")}" class="logout">Log out ({esc(user["name"])})</a>'
+        chrome = f"""<div class="appbar"><button id="menu_btn" aria-label="Open menu"><span></span><span></span><span></span></button>
+          <span class="appbar_title">{esc(title)}</span>
+          <a href="{url_for('index')}" class="home_btn" aria-label="Home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg></a></div>
+        <div id="scrim"></div><aside id="drawer"><div class="drawer_head">PILOTS AND CREW COMMUNITY</div>{items}</aside>
+        <script>
+        document.getElementById('menu_btn').addEventListener('click',function(){{document.body.classList.add('menu_open')}});
+        document.getElementById('scrim').addEventListener('click',function(){{document.body.classList.remove('menu_open')}});
+        </script>"""
     msg = f'<div class="flash">{flash}</div>' if flash else ""
     err = f'<div class="error">{error}</div>' if error else ""
     return render_template_string(f"""<!doctype html><html lang="en"><head>
