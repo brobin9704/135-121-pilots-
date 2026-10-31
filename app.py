@@ -390,6 +390,29 @@ label{font-weight:600}.muted{color:#94a3b8}.stars{color:#facc15;letter-spacing:2
 @media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}}
 """
 
+# Auto-fills the city when an airport code is typed on the Board check-in form.
+# Data: static/airports.json (OurAirports, public domain; large + medium airports).
+AUTOFILL_JS = """<script>
+(function(){
+  var codeEl=document.getElementById('airport_code'),cityEl=document.getElementById('city');
+  if(!codeEl||!cityEl)return;
+  var db=null,loading=false;
+  function lookup(){
+    var code=codeEl.value.trim().toUpperCase();
+    if(code.length<3||!db)return;
+    var city=db[code];
+    if(city&&(!cityEl.value||cityEl.dataset.auto==='1')){cityEl.value=city;cityEl.dataset.auto='1';}
+  }
+  function ensure(){
+    if(db){lookup();return;}
+    if(loading)return;loading=true;
+    fetch('/static/airports.json').then(function(r){return r.json();}).then(function(j){db=j;loading=false;lookup();}).catch(function(){loading=false;});
+  }
+  codeEl.addEventListener('input',ensure);
+  cityEl.addEventListener('input',function(){cityEl.dataset.auto='';});
+})();
+</script>"""
+
 def page(title, user, body, flash=None, error=None):
     nav = ""
     if user:
@@ -558,13 +581,13 @@ def board():
             nearby.append(f"{esc(fr['name'])} — {esc(fc['airport_code'])} · {esc(fc['city'])}")
     nearby_html = "".join(f"<li>{n}</li>" for n in nearby) or "<li class='muted'>No friends checked in to the same area.</li>"
     body = f"""{checkin_html}
-      <div class="card"><h2>Check in</h2><p class="muted">Type the airport code and city. This is the only location this app uses.</p>
+      <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically. This is the only location this app uses.</p>
       <form method="post"><input type="hidden" name="action" value="checkin">
-      <label>Airport code</label><input name="airport_code" placeholder="KTUL" required>
-      <label>City</label><input name="city" placeholder="Tulsa" required>
+      <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
+      <label>City</label><input id="city" name="city" placeholder="Tulsa" required>
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
-      <button type="submit">Check in</button></form></div>
+      <button type="submit">Check in</button></form></div>{AUTOFILL_JS}
       <div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>
       <p><a href="{url_for('friends')}">Manage friends</a></p></div>"""
     return page("Board", user, body, flash=flash)
