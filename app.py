@@ -896,6 +896,22 @@ def board():
         history_html = f'<div class="card"><h2>Check-in history</h2><ul>{items}</ul></div>'
     else:
         history_html = ""
+    # Pilot reviews in the current check-in area, newest first.
+    if checkin:
+        rev_rows = db.execute(
+            """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
+               WHERE upper(r.airport_code) = ? OR lower(r.city) = ?
+               ORDER BY r.created_at DESC, r.id DESC LIMIT 20""",
+            ((checkin["airport_code"] or "").upper(), (checkin["city"] or "").strip().lower())).fetchall()
+        reviews_html = '<div class="card"><h2>Pilot reviews in this area</h2>'
+        if rev_rows:
+            reviews_html += (f'<p class="muted">{len(rev_rows)} reviews at '
+                             f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}</p></div>')
+            reviews_html += "".join(review_card(r, user) for r in rev_rows)
+        else:
+            reviews_html += '<p class="muted">No pilot reviews here yet — be the first.</p></div>'
+    else:
+        reviews_html = ""
     body = f"""{checkin_html}
       <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
@@ -906,7 +922,7 @@ def board():
       <label>End date (optional)</label><input type="date" name="end_date">
       <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
       <div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>
-      <p><a href="{url_for('friends')}">Manage friends</a></p></div>{history_html}"""
+      <p><a href="{url_for('friends')}">Manage friends</a></p></div>{reviews_html}{history_html}"""
     return page("Check-In", user, body, flash=flash)
 
 # ---------------------------------------------------------------- reviews
