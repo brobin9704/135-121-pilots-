@@ -93,6 +93,7 @@ SQLITE_SCHEMA = """
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
         airport_code TEXT NOT NULL, city TEXT NOT NULL, place_name TEXT, kind TEXT,
+        hotel_place TEXT, restaurant_place TEXT,
         start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -147,6 +148,7 @@ POSTGRES_SCHEMA = """
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
         airport_code TEXT NOT NULL, city TEXT NOT NULL, place_name TEXT, kind TEXT,
+        hotel_place TEXT, restaurant_place TEXT,
         start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -235,6 +237,10 @@ def init_db():
             cur.execute(POSTGRES_SCHEMA)
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS place_name TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS kind TEXT")
+            cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS hotel_place TEXT")
+            cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS restaurant_place TEXT")
+            cur.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
+            cur.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
             conn.commit()
         finally:
             conn.close()
@@ -249,6 +255,13 @@ def init_db():
             db.execute("ALTER TABLE checkins ADD COLUMN kind TEXT")
         except sqlite3.OperationalError:
             pass  # column already exists
+        for _col in ("hotel_place", "restaurant_place"):
+            try:
+                db.execute(f"ALTER TABLE checkins ADD COLUMN {_col} TEXT")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+        db.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
+        db.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
         db.commit()
         db.close()
 
@@ -298,8 +311,12 @@ def area_matches(checkin, airport_code, city):
     return False
 
 def checkin_label(c):
-    """Display label for a check-in: place first when set, then airport · city."""
-    return " · ".join(esc(p) for p in [c["place_name"], c["airport_code"], c["city"]] if p)
+    """Display label for a check-in: hotel/restaurant places first, then airport · city."""
+    parts = [p for p in [c["hotel_place"], c["restaurant_place"]] if p]
+    if not parts and c["place_name"]:
+        parts = [c["place_name"]]
+    parts += [c["airport_code"], c["city"]]
+    return " · ".join(esc(p) for p in parts if p)
 
 def search_saved_reviews(kind, query, scope, user):
     """Every word in the query must match somewhere in the haystack."""
@@ -799,11 +816,26 @@ def board():
         city = request.form.get("city", "").strip()
         kind = request.form.get("kind", "").strip()
         kind = kind if kind in ("hotel", "restaurant") else None
-        db.execute(
-            "INSERT INTO checkins (user_id, airport_code, city, place_name, kind, start_date, end_date) VALUES (?,?,?,?,?,?,?)",
-            (user["id"], code, city, place, kind,
-             request.form.get("start_date") or date.today().isoformat(),
-             request.form.get("end_date") or None))
+        start = request.form.get("start_date") or date.today().isoformat()
+        end = request.form.get("end_date") or None
+        if place and kind:
+            # From a search result: attach the hotel/restaurant to the current
+            # check-in at this place instead of replacing the whole check-in.
+            col = "hotel_place" if kind == "hotel" else "restaurant_place"
+            cur = current_checkin(user["id"])
+            if cur and (cur["airport_code"] or "").upper() == code and \
+                    (cur["city"] or "").strip().lower() == city.strip().lower():
+                db.execute(f"UPDATE checkins SET {col}=? WHERE id=?", (place, cur["id"]))
+            else:
+                db.execute(
+                    f"INSERT INTO checkins (user_id, airport_code, city, {col}, start_date, end_date) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (user["id"], code, city, place, start, end))
+        else:
+            # Main check-in form: a new check-in at a new place.
+            db.execute(
+                "INSERT INTO checkins (user_id, airport_code, city, start_date, end_date) VALUES (?,?,?,?,?)",
+                (user["id"], code, city, start, end))
         # A new place means old search results no longer apply.
         db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
                    (user["id"], code, city.strip().lower()))
@@ -815,16 +847,23 @@ def board():
         flash = "Checked out."
     checkin = current_checkin(user["id"])
     if checkin:
-        if checkin["place_name"]:
-            review_url = (url_for("new_review") + "?" + urllib.parse.urlencode(
-                {"kind": checkin["kind"] or "hotel", "place": checkin["place_name"],
+        def _place_link(place, kind):
+            url = (url_for("new_review") + "?" + urllib.parse.urlencode(
+                {"kind": kind, "place": place,
                  "airport": checkin["airport_code"], "city": checkin["city"]}))
-            label = (f'<a href="{review_url}">{esc(checkin["place_name"])}</a> · '
-                     f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}')
-        else:
-            label = checkin_label(checkin)
+            return f'<a href="{url}">{esc(place)}</a>'
+        status_lines = []
+        if checkin["hotel_place"]:
+            status_lines.append(f"Hotel: {_place_link(checkin['hotel_place'], 'hotel')}")
+        if checkin["restaurant_place"]:
+            status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')}")
+        if not status_lines and checkin["place_name"]:
+            # Legacy rows (pre hotel/restaurant split).
+            status_lines.append(_place_link(checkin["place_name"], checkin["kind"] or "hotel"))
+        status_lines.append(f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}')
+        status_html = "<br>".join(status_lines)
         checkin_html = f"""<div class="card"><h2>Current check-in</h2>
-          <p><strong>{label}</strong></p>
+          <p><strong>{status_html}</strong></p>
           <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
           <form method="post"><input type="hidden" name="action" value="checkout">
           <button type="submit">Check out</button></form></div>"""
