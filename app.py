@@ -71,7 +71,7 @@ SQLITE_SCHEMA = """
     CREATE TABLE IF NOT EXISTS checkins (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        airport_code TEXT NOT NULL, city TEXT NOT NULL,
+        airport_code TEXT NOT NULL, city TEXT NOT NULL, place_name TEXT,
         start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -109,7 +109,7 @@ POSTGRES_SCHEMA = """
     CREATE TABLE IF NOT EXISTS checkins (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        airport_code TEXT NOT NULL, city TEXT NOT NULL,
+        airport_code TEXT NOT NULL, city TEXT NOT NULL, place_name TEXT,
         start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -180,12 +180,17 @@ def init_db():
         try:
             cur = conn.cursor()
             cur.execute(POSTGRES_SCHEMA)
+            cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS place_name TEXT")
             conn.commit()
         finally:
             conn.close()
     else:
         db = sqlite3.connect(DATABASE)
         db.executescript(SQLITE_SCHEMA)
+        try:
+            db.execute("ALTER TABLE checkins ADD COLUMN place_name TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
         db.commit()
         db.close()
 
@@ -233,6 +238,10 @@ def area_matches(checkin, airport_code, city):
     if city and checkin["city"].strip().lower() == city.strip().lower():
         return True
     return False
+
+def checkin_label(c):
+    """Display label for a check-in: place first when set, then airport · city."""
+    return " · ".join(esc(p) for p in [c["place_name"], c["airport_code"], c["city"]] if p)
 
 def search_saved_reviews(kind, query, scope, user):
     """Every word in the query must match somewhere in the haystack."""
@@ -634,13 +643,15 @@ def board():
     db = get_db()
     flash = None
     if request.method == "POST" and request.form.get("action") == "checkin":
+        place = request.form.get("place_name", "").strip() or None
         db.execute(
-            "INSERT INTO checkins (user_id, airport_code, city, start_date, end_date) VALUES (?,?,?,?,?)",
+            "INSERT INTO checkins (user_id, airport_code, city, place_name, start_date, end_date) VALUES (?,?,?,?,?,?)",
             (user["id"], request.form.get("airport_code", "").strip().upper(),
-             request.form.get("city", "").strip(), request.form.get("start_date") or date.today().isoformat(),
+             request.form.get("city", "").strip(), place,
+             request.form.get("start_date") or date.today().isoformat(),
              request.form.get("end_date") or None))
         db.commit()
-        flash = "Checked in."
+        flash = f"Checked in at {esc(place)}." if place else "Checked in."
     if request.method == "POST" and request.form.get("action") == "checkout":
         db.execute("UPDATE checkins SET checked_out = 1 WHERE user_id = ? AND checked_out = 0", (user["id"],))
         db.commit()
@@ -648,7 +659,7 @@ def board():
     checkin = current_checkin(user["id"])
     if checkin:
         checkin_html = f"""<div class="card"><h2>Current check-in</h2>
-          <p><strong>{esc(checkin['airport_code'])} · {esc(checkin['city'])}</strong></p>
+          <p><strong>{checkin_label(checkin)}</strong></p>
           <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
           <form method="post"><input type="hidden" name="action" value="checkout">
           <button type="submit">Check out</button></form></div>"""
@@ -663,7 +674,7 @@ def board():
         fc = current_checkin(fr["id"])
         if checkin and fc and (fc["airport_code"].upper() == checkin["airport_code"].upper()
                                or fc["city"].strip().lower() == checkin["city"].strip().lower()):
-            nearby.append(f"{esc(fr['name'])} — {esc(fc['airport_code'])} · {esc(fc['city'])}")
+            nearby.append(f"{esc(fr['name'])} — {checkin_label(fc)}")
     nearby_html = "".join(f"<li>{n}</li>" for n in nearby) or "<li class='muted'>No friends checked in to the same area.</li>"
     body = f"""{checkin_html}
       <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
@@ -779,9 +790,15 @@ def external_results_html(kind, data, user):
         web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
         add = (url_for("new_review") + "?" + urllib.parse.urlencode(
             {"kind": kind, "place": r["name"], "airport": checkin["airport_code"], "city": checkin["city"]}))
+        checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px">'
+            f'<input type="hidden" name="action" value="checkin">'
+            f'<input type="hidden" name="airport_code" value="{esc(checkin["airport_code"])}">'
+            f'<input type="hidden" name="city" value="{esc(checkin["city"])}">'
+            f'<input type="hidden" name="place_name" value="{esc(r["name"])}">'
+            f'<button type="submit" style="width:auto;padding:6px 12px">Check in</button></form>')
         cards += f"""<div class="card"><a href="{add}"><strong>{esc(r['name'])}</strong></a> <span class="muted">{r['distance']} mi</span>
           {detail}<div>Address: {esc(r['address'])}</div><div>Phone: {esc(r['phone'])}</div>{web}
-          <p><a href="{add}">Add review</a></p></div>"""
+          <p><a href="{add}">Add review</a></p>{checkin_btn}</div>"""
     return header + cards
 
 @app.route("/hotels")
@@ -895,9 +912,9 @@ def friends():
         fc = current_checkin(fr["id"])
         nearby = ""
         if checkin and fc and area_matches(checkin, fc["airport_code"], fc["city"]):
-            nearby = f' — <strong>nearby: {esc(fc["airport_code"])} · {esc(fc["city"])}</strong>'
+            nearby = f' — <strong>nearby: {checkin_label(fc)}</strong>'
         elif fc:
-            nearby = f' — checked in: {esc(fc["airport_code"])} · {esc(fc["city"])}'
+            nearby = f' — checked in: {checkin_label(fc)}'
         else:
             nearby = ' — no active check-in'
         items += (f"<li>{esc(fr['name'])} ({esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
