@@ -1,5 +1,5 @@
 """
-135/121 Pilots - deployable version.
+Pilots & Crew - deployable version.
 
 Check-in-only location model:
   Location is ONLY the airport code and city a pilot types when checking in.
@@ -441,8 +441,8 @@ def page(title, user, body, flash=None, error=None):
     err = f'<div class="error">{error}</div>' if error else ""
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>{{{{ title }}}} - 135/121 Pilots</title><style>{CSS}</style></head>
-      <body><div class="wrap"><header><h1>135/121 Pilots</h1></header>{nav}{msg}{err}{body}</div></body></html>""",
+      <title>{{{{ title }}}} - Pilots &amp; Crew</title><style>{CSS}</style></head>
+      <body><div class="wrap"><header><h1>Pilots &amp; Crew</h1></header>{nav}{msg}{err}{body}</div></body></html>""",
       title=title)
 
 def esc(s):
