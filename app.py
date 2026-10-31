@@ -654,7 +654,8 @@ def login_page(error=None):
       .reg a{{color:#7dd3fc}}
       .error{{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:0 0 14px}}
       </style></head><body><div class="bg"></div><div class="scrim"></div>
-      <div class="card"><h1>Pilots &amp; Crew</h1><p class="tag">Check in. Review. Find your crew.</p>
+      <div class="card"><h1>Pilots &amp; Crew</h1>
+      <p class="tag">Pilots &amp; Crew is where pilots share real layover intel. Check in at your overnight, leave your honest opinion of the hotels and restaurants nearby, and read what other pilots thought before you book, eat, or sleep.</p>
       {err}<form method="post">
       <label>Email</label><input type="email" name="email" required autocomplete="email">
       <label>Password</label><input type="password" name="password" required autocomplete="current-password">
