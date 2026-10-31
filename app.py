@@ -11,6 +11,7 @@ Run:  python app.py   (or: flask --app app run)
 Production: gunicorn app:app  (see Dockerfile / render.yaml)
 """
 import math
+import base64
 import json
 import os
 import sqlite3
@@ -23,6 +24,19 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me-in-production")
+
+# The login background photo ships as base64 (snapshot pushes are text-only);
+# decode it to the real JPEG on startup.
+try:
+    _b64 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "login-bg.jpg.b64")
+    _jpg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "login-bg.jpg")
+    if os.path.exists(_b64):
+        with open(_b64, "rb") as _f:
+            _raw = base64.b64decode(_f.read())
+        with open(_jpg, "wb") as _f:
+            _f.write(_raw)
+except Exception:
+    pass
 # Database: Postgres when DATABASE_URL is set (production, e.g. Render),
 # otherwise a local SQLite file (development).
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
@@ -613,15 +627,40 @@ def login():
         if row and check_password_hash(row["password_hash"], request.form.get("password", "")):
             session["user_id"] = row["id"]
             return redirect(url_for("board"))
-        return page("Log in", None, login_form(), error="Email or password did not match.")
-    return page("Log in", None, login_form())
+        return login_page(error="Email or password did not match.")
+    return login_page()
 
-def login_form():
-    return """<div class="card"><h2>Log in</h2><form method="post">
-    <label>Email</label><input type="email" name="email" required>
-    <label>Password</label><input type="password" name="password" required>
-    <button type="submit">Log in</button></form>
-    <p>No account yet? <a href="/register">Register</a></p></div>"""
+def login_page(error=None):
+    """Full-bleed photo login page. Standalone document, not wrapped in page()."""
+    err = f'<div class="error">{error}</div>' if error else ""
+    return render_template_string(f"""<!doctype html><html lang="en"><head>
+      <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Log in - Pilots &amp; Crew</title><style>
+      body{{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e2e8f0;
+        min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}}
+      .bg{{position:fixed;inset:0;background:url('{url_for("static", filename="login-bg.jpg")}') center/cover no-repeat}}
+      .scrim{{position:fixed;inset:0;background:linear-gradient(180deg,rgba(5,9,22,.45),rgba(5,9,22,.72))}}
+      .card{{position:relative;width:100%;max-width:380px;background:rgba(13,20,38,.84);
+        border:1px solid rgba(148,163,184,.28);border-radius:18px;padding:30px 26px;box-sizing:border-box;
+        box-shadow:0 18px 50px rgba(0,0,0,.45)}}
+      h1{{margin:0 0 4px;font-size:28px;letter-spacing:.5px}}
+      .tag{{color:#bae6fd;font-size:14px;margin:0 0 22px}}
+      label{{font-weight:600;font-size:14px}}
+      input{{width:100%;padding:11px;margin:6px 0 14px;border-radius:10px;border:1px solid #475569;
+        background:#0b1322;color:#e2e8f0;box-sizing:border-box;font-size:16px}}
+      button{{width:100%;background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;border:0;padding:13px;
+        border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}}
+      .reg{{text-align:center;margin:14px 0 0;font-size:14px;color:#cbd5e1}}
+      .reg a{{color:#7dd3fc}}
+      .error{{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:0 0 14px}}
+      </style></head><body><div class="bg"></div><div class="scrim"></div>
+      <div class="card"><h1>Pilots &amp; Crew</h1><p class="tag">Check in. Review. Find your crew.</p>
+      {err}<form method="post">
+      <label>Email</label><input type="email" name="email" required autocomplete="email">
+      <label>Password</label><input type="password" name="password" required autocomplete="current-password">
+      <button type="submit">Log in</button></form>
+      <p class="reg">No account yet? <a href="/register">Register</a></p></div>
+      </body></html>""")
 
 @app.route("/logout")
 def logout():

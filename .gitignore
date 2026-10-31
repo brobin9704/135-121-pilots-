@@ -2,3 +2,4 @@ pilots.db
 .env
 __pycache__/
 .venv/
+static/login-bg.jpg
