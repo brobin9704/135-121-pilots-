@@ -88,6 +88,16 @@ SQLITE_SCHEMA = """
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE(from_user_id, to_user_id)
     );
+    CREATE TABLE IF NOT EXISTS search_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        kind TEXT NOT NULL,
+        airport_code TEXT NOT NULL, city TEXT NOT NULL,
+        radius INTEGER NOT NULL,
+        centre TEXT, results TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(user_id, kind)
+    );
     CREATE TABLE IF NOT EXISTS reviews (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
@@ -125,6 +135,16 @@ POSTGRES_SCHEMA = """
         to_user_id INTEGER NOT NULL REFERENCES users(id),
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         UNIQUE(from_user_id, to_user_id)
+    );
+    CREATE TABLE IF NOT EXISTS search_cache (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        kind TEXT NOT NULL,
+        airport_code TEXT NOT NULL, city TEXT NOT NULL,
+        radius INTEGER NOT NULL,
+        centre TEXT, results TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE(user_id, kind)
     );
     CREATE TABLE IF NOT EXISTS reviews (
         id SERIAL PRIMARY KEY,
@@ -644,12 +664,16 @@ def board():
     flash = None
     if request.method == "POST" and request.form.get("action") == "checkin":
         place = request.form.get("place_name", "").strip() or None
+        code = request.form.get("airport_code", "").strip().upper()
+        city = request.form.get("city", "").strip()
         db.execute(
             "INSERT INTO checkins (user_id, airport_code, city, place_name, start_date, end_date) VALUES (?,?,?,?,?,?)",
-            (user["id"], request.form.get("airport_code", "").strip().upper(),
-             request.form.get("city", "").strip(), place,
+            (user["id"], code, city, place,
              request.form.get("start_date") or date.today().isoformat(),
              request.form.get("end_date") or None))
+        # A new place means old search results no longer apply.
+        db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
+                   (user["id"], code, city.strip().lower()))
         db.commit()
         flash = f"Checked in at {esc(place)}." if place else "Checked in."
     if request.method == "POST" and request.form.get("action") == "checkout":
@@ -740,8 +764,42 @@ def delete_review(review_id):
     return redirect(url_for("board"))
 
 # ---------------------------------------------------------------- hotels / restaurants
+def save_search_cache(user_id, kind, checkin, radius, centre, results):
+    """Keep the last at-my-location search so it survives page switches."""
+    db = get_db()
+    centre_json = json.dumps(list(centre)) if centre else None
+    results_json = json.dumps(results or [])
+    if USE_POSTGRES:
+        db.execute(
+            """INSERT INTO search_cache (user_id, kind, airport_code, city, radius, centre, results)
+               VALUES (?,?,?,?,?,?,?)
+               ON CONFLICT (user_id, kind) DO UPDATE SET
+                 airport_code=EXCLUDED.airport_code, city=EXCLUDED.city, radius=EXCLUDED.radius,
+                 centre=EXCLUDED.centre, results=EXCLUDED.results, created_at=now()""",
+            (user_id, kind, checkin["airport_code"], checkin["city"], radius, centre_json, results_json))
+    else:
+        db.execute(
+            """INSERT OR REPLACE INTO search_cache (user_id, kind, airport_code, city, radius, centre, results)
+               VALUES (?,?,?,?,?,?,?)""",
+            (user_id, kind, checkin["airport_code"], checkin["city"], radius, centre_json, results_json))
+    db.commit()
+
+def load_search_cache(user_id, kind, checkin):
+    """(radius, centre, results) from the last search, if it was for this check-in place."""
+    row = get_db().execute(
+        "SELECT radius, centre, results, airport_code, city FROM search_cache WHERE user_id=? AND kind=?",
+        (user_id, kind)).fetchone()
+    if not row:
+        return None
+    if (row["airport_code"] or "").upper() != (checkin["airport_code"] or "").upper() or \
+       (row["city"] or "").strip().lower() != (checkin["city"] or "").strip().lower():
+        return None
+    centre = tuple(json.loads(row["centre"])) if row["centre"] else None
+    return row["radius"], centre, json.loads(row["results"] or "[]")
+
 def at_location_section(kind, user, radius_options, default_radius):
-    """The 'at my location' card. Location = check-in only."""
+    """The 'at my location' card. Location = check-in only.
+    Search results are kept until the pilot checks in somewhere else."""
     checkin = current_checkin(user["id"])
     if not checkin:
         return ('<div class="card"><h2>Search ' + kind + 's at my location</h2>'
@@ -752,11 +810,24 @@ def at_location_section(kind, user, radius_options, default_radius):
         radius = int(radius_raw)
     except ValueError:
         radius = default_radius
-    radius = max(1, min(radius, 20 if kind == "restaurant" else 10))
     # Hotels: 2/5/10. Restaurants: 5/10/20, default 20, capped at 20.
     if kind == "restaurant":
         radius_options = [5, 10, 20]
         radius = max(1, min(radius, 20))
+    else:
+        radius = max(1, min(radius, 10))
+    if request.args.get("at_checkin") == "1":
+        centre, results, error = places_at_checkin(checkin, radius, kind)
+        if results is not None:
+            save_search_cache(user["id"], kind, checkin, radius, centre, results)
+        data = (centre, results, error, radius, checkin)
+    else:
+        cached = load_search_cache(user["id"], kind, checkin)
+        if cached:
+            radius, centre, results = cached
+            data = (centre, results, None, radius, checkin)
+        else:
+            radius, data = default_radius, None
     radios = "".join(
         f'<label><input type="radio" name="radius" value="{r}" style="width:auto" {"checked" if r == radius else ""}> {r} miles</label> '
         for r in radius_options)
@@ -764,10 +835,7 @@ def at_location_section(kind, user, radius_options, default_radius):
       <p class="muted">Uses your check-in location: {esc(checkin['airport_code'])} · {esc(checkin['city'])}. No other location is used.</p>
       <form method="get"><input type="hidden" name="at_checkin" value="1">{radios}
       <button type="submit">Search {kind}s at my location</button></form></div>"""
-    if request.args.get("at_checkin") != "1":
-        return card, None, None
-    centre, results, error = places_at_checkin(checkin, radius, kind)
-    return card, (centre, results, error, radius, checkin), checkin
+    return card, data, checkin
 
 def external_results_html(kind, data, user):
     centre, results, error, radius, checkin = data
