@@ -69,6 +69,13 @@ SQLITE_SCHEMA = """
         friend_id INTEGER NOT NULL REFERENCES users(id),
         UNIQUE(user_id, friend_id)
     );
+    CREATE TABLE IF NOT EXISTS friend_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_user_id INTEGER NOT NULL REFERENCES users(id),
+        to_user_id INTEGER NOT NULL REFERENCES users(id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(from_user_id, to_user_id)
+    );
     CREATE TABLE IF NOT EXISTS reviews (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
@@ -99,6 +106,13 @@ POSTGRES_SCHEMA = """
         user_id INTEGER NOT NULL REFERENCES users(id),
         friend_id INTEGER NOT NULL REFERENCES users(id),
         UNIQUE(user_id, friend_id)
+    );
+    CREATE TABLE IF NOT EXISTS friend_requests (
+        id SERIAL PRIMARY KEY,
+        from_user_id INTEGER NOT NULL REFERENCES users(id),
+        to_user_id INTEGER NOT NULL REFERENCES users(id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE(from_user_id, to_user_id)
     );
     CREATE TABLE IF NOT EXISTS reviews (
         id SERIAL PRIMARY KEY,
@@ -721,6 +735,16 @@ def restaurants():
     return page("Restaurants", user, body)
 
 # ---------------------------------------------------------------- friends
+def _add_friendship(db, a, b):
+    # Mutual friendship rows; safe to call twice.
+    if USE_POSTGRES:
+        db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
+                   "ON CONFLICT (user_id, friend_id) DO NOTHING", (a, b))
+        db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
+                   "ON CONFLICT (user_id, friend_id) DO NOTHING", (b, a))
+    else:
+        db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (a, b))
+        db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (b, a))
 @app.route("/friends", methods=["GET", "POST"])
 @login_required
 def friends():
@@ -747,17 +771,24 @@ def friends():
             new = [u for u in named if u["id"] not in friend_ids]
             if len(new) == 1:
                 fid = new[0]["id"]
-                if USE_POSTGRES:
-                    db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
-                               "ON CONFLICT (user_id, friend_id) DO NOTHING", (user["id"], fid))
-                    db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
-                               "ON CONFLICT (user_id, friend_id) DO NOTHING", (fid, user["id"]))
+                reverse = db.execute("SELECT id FROM friend_requests WHERE from_user_id=? AND to_user_id=?",
+                                     (fid, user["id"])).fetchone()
+                outgoing = db.execute("SELECT id FROM friend_requests WHERE from_user_id=? AND to_user_id=?",
+                                      (user["id"], fid)).fetchone()
+                if reverse:
+                    # They already asked you — adding them back approves it.
+                    _add_friendship(db, user["id"], fid)
+                    db.execute("DELETE FROM friend_requests WHERE id=?", (reverse["id"],))
+                    db.commit()
+                    friend_ids.add(fid)
+                    flash = f"You are now friends with {esc(new[0]['name'])}."
+                elif outgoing:
+                    error = f"You already sent {esc(new[0]['name'])} a request."
                 else:
-                    db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (user["id"], fid))
-                    db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (fid, user["id"]))
-                db.commit()
-                friend_ids.add(fid)
-                flash = f"Added {esc(new[0]['name'])} as a friend."
+                    db.execute("INSERT INTO friend_requests (from_user_id, to_user_id) VALUES (?,?)",
+                               (user["id"], fid))
+                    db.commit()
+                    flash = f"Friend request sent to {esc(new[0]['name'])}. They need to approve it."
             elif len(new) > 1:
                 detail = ", ".join(f"{esc(m['name'])} ({esc(m['airline'])} · {esc(m['base'])})" for m in new)
                 error = f"More than one pilot is named '{esc(pilot_name)}': {detail}."
@@ -765,6 +796,24 @@ def friends():
                 error = f"'{esc(pilot_name)}' is already your friend."
             else:
                 error = f"No pilot named '{esc(pilot_name)}' found. Use the name on their account."
+        req_action = request.form.get("req_action")
+        req_id = request.form.get("request_id")
+        if req_action in ("approve", "decline", "cancel") and req_id:
+            fr = db.execute("SELECT * FROM friend_requests WHERE id=?", (int(req_id),)).fetchone()
+            if fr and req_action in ("approve", "decline") and fr["to_user_id"] == user["id"]:
+                if req_action == "approve":
+                    _add_friendship(db, user["id"], fr["from_user_id"])
+                    friend_ids.add(fr["from_user_id"])
+                    other = db.execute("SELECT name FROM users WHERE id=?", (fr["from_user_id"],)).fetchone()
+                    flash = f"You are now friends with {esc(other['name']) if other else 'them'}."
+                else:
+                    flash = "Request declined."
+                db.execute("DELETE FROM friend_requests WHERE id=?", (fr["id"],))
+                db.commit()
+            elif fr and req_action == "cancel" and fr["from_user_id"] == user["id"]:
+                db.execute("DELETE FROM friend_requests WHERE id=?", (fr["id"],))
+                db.commit()
+                flash = "Request cancelled."
     rows = db.execute(
         "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
     ).fetchall()
@@ -795,9 +844,29 @@ def friends():
     else:
         add_card = ('<div class="card"><h2>Add a friend</h2>'
                     '<p class="muted">No more pilots to add — everyone here is already your friend.</p></div>')
+    req_items = ""
+    for q in db.execute(
+            "SELECT r.id, r.from_user_id, u.name, u.airline, u.base, u.aircraft FROM friend_requests r "
+            "JOIN users u ON u.id = r.from_user_id WHERE r.to_user_id=?", (user["id"],)).fetchall():
+        req_items += (f"<li>{esc(q['name'])} ({esc(q['airline'])} · {esc(q['base'])} · {esc(q['aircraft'])})"
+                      f' <form method="post" style="display:inline;margin-left:8px">'
+                      f'<input type="hidden" name="request_id" value="{q["id"]}">'
+                      f'<button type="submit" name="req_action" value="approve" style="width:auto;padding:4px 10px">Approve</button> '
+                      f'<button type="submit" name="req_action" value="decline" style="background:#7f1d1d;width:auto;padding:4px 10px">Decline</button>'
+                      f"</form></li>")
+    for q in db.execute(
+            "SELECT r.id, r.to_user_id, u.name, u.airline, u.base, u.aircraft FROM friend_requests r "
+            "JOIN users u ON u.id = r.to_user_id WHERE r.from_user_id=?", (user["id"],)).fetchall():
+        req_items += (f'<li class="muted">Request sent to {esc(q["name"])} — waiting for approval'
+                      f' <form method="post" style="display:inline;margin-left:8px">'
+                      f'<input type="hidden" name="request_id" value="{q["id"]}">'
+                      f'<button type="submit" name="req_action" value="cancel" style="background:#7f1d1d;width:auto;padding:4px 10px">Cancel</button>'
+                      f"</form></li>")
+    req_card = f'<div class="card"><h2>Friend requests</h2><ul>{req_items}</ul></div>' if req_items else ""
     body = f"""<div class="card"><h2>Friends</h2>
       <p class="muted">Friends show as nearby only when their check-in matches yours.</p>
       <ul>{items or '<li class="muted">No friends yet.</li>'}</ul></div>
+      {req_card}
       {add_card}"""
     return page("Friends", user, body, flash=flash, error=error)
 
