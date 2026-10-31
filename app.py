@@ -3,20 +3,22 @@ Pilots & Crew - deployable version.
 
 Check-in-only location model:
   Location is ONLY the airport code and city a pilot types when checking in.
-  There is no device-location feature in this app.
+  The optional "Find me" button takes one tap-initiated GPS fix to suggest the
+  nearest airport; nothing is stored or tracked.
 
 Stack: Flask. SQLite locally, Postgres in production (via DATABASE_URL).
 Run:  python app.py   (or: flask --app app run)
 Production: gunicorn app:app  (see Dockerfile / render.yaml)
 """
 import math
+import json
 import os
 import sqlite3
 import urllib.parse
 import urllib.request
 from datetime import date
 
-from flask import Flask, g, redirect, render_template_string, request, session, url_for
+from flask import Flask, g, jsonify, redirect, render_template_string, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
@@ -47,6 +49,16 @@ COMMON_TAGS = [
     "quiet rooms", "blackout curtains", "crew shuttle", "open late",
     "crew rate", "good wifi", "late kitchen", "close to airport",
 ]
+
+# Airport coordinates for the "Find me" button (server-side only; OurAirports,
+# public domain). Maps CODE -> [lat, lon, city, name].
+AIRPORT_COORDS = {}
+try:
+    _coords_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "airports_coords.json")
+    with open(_coords_path, encoding="utf-8") as _f:
+        AIRPORT_COORDS = json.load(_f)
+except (OSError, ValueError):
+    pass
 
 # ---------------------------------------------------------------- database
 SQLITE_SCHEMA = """
@@ -428,6 +440,38 @@ AUTOFILL_JS = """<script>
 })();
 </script>"""
 
+# "Find me" button: one tap-initiated GPS fix -> nearest airport fills the form.
+# Nothing is stored or tracked; coordinates are only used for the lookup.
+FINDME_JS = """<script>
+(function(){
+  var btn=document.getElementById('findme'),msg=document.getElementById('findme_msg');
+  var codeEl=document.getElementById('airport_code'),cityEl=document.getElementById('city');
+  if(!btn||!codeEl||!cityEl)return;
+  function say(t){ if(msg)msg.textContent=t; }
+  btn.addEventListener('click',function(){
+    if(!navigator.geolocation){ say('Location is not supported on this device. Type the airport code instead.'); return; }
+    btn.disabled=true; var orig=btn.textContent; btn.textContent='Locating…';
+    function done(){ btn.disabled=false; btn.textContent=orig; }
+    navigator.geolocation.getCurrentPosition(function(pos){
+      fetch('/nearest_airport?lat='+pos.coords.latitude+'&lon='+pos.coords.longitude)
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if(d.code){
+            codeEl.value=d.code; cityEl.value=d.city; cityEl.dataset.auto='1';
+            say('Nearest airport: '+d.code+' ('+d.name+'), '+d.distance_mi+' mi away.');
+          } else { say('No airport found near you. Type the airport code instead.'); }
+          done();
+        })
+        .catch(function(){ say('Lookup failed. Type the airport code instead.'); done(); });
+    },function(err){
+      var why=err.code===1?'permission denied':err.code===2?'unavailable':err.code===3?'timed out':'unavailable';
+      say('Could not get your location ('+why+'). Type the airport code instead.');
+      done();
+    },{enableHighAccuracy:true,timeout:12000,maximumAge:60000});
+  });
+})();
+</script>"""
+
 def page(title, user, body, flash=None, error=None):
     nav = ""
     if user:
@@ -559,6 +603,30 @@ def index():
     return redirect(url_for("board"))
 
 # ---------------------------------------------------------------- board
+@app.route("/nearest_airport")
+@login_required
+def nearest_airport():
+    """Nearest airport to a tap-initiated GPS fix. Nothing is stored."""
+    try:
+        lat = float(request.args.get("lat", ""))
+        lon = float(request.args.get("lon", ""))
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad coordinates"}), 400
+    if not AIRPORT_COORDS:
+        return jsonify({"error": "airport data unavailable"}), 503
+    best, best_d = None, None
+    for code, (alat, alon, city, name) in AIRPORT_COORDS.items():
+        # Haversine distance in miles.
+        p1, p2 = math.radians(lat), math.radians(alat)
+        dphi = math.radians(alat - lat)
+        dlmb = math.radians(alon - lon)
+        a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+        d = 2 * 3958.8 * math.asin(math.sqrt(a))
+        if best_d is None or d < best_d:
+            best, best_d = (code, city, name), d
+    code, city, name = best
+    return jsonify({"code": code, "city": city, "name": name, "distance_mi": round(best_d, 1)})
+
 @app.route("/board", methods=["GET", "POST"])
 @login_required
 def board():
@@ -598,13 +666,14 @@ def board():
             nearby.append(f"{esc(fr['name'])} — {esc(fc['airport_code'])} · {esc(fc['city'])}")
     nearby_html = "".join(f"<li>{n}</li>" for n in nearby) or "<li class='muted'>No friends checked in to the same area.</li>"
     body = f"""{checkin_html}
-      <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically. This is the only location this app uses.</p>
+      <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
+      <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
       <form method="post"><input type="hidden" name="action" value="checkin">
       <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
       <label>City</label><input id="city" name="city" placeholder="Tulsa" required>
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
-      <button type="submit">Check in</button></form></div>{AUTOFILL_JS}
+      <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
       <div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>
       <p><a href="{url_for('friends')}">Manage friends</a></p></div>"""
     return page("Check-In", user, body, flash=flash)

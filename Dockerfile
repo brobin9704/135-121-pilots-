@@ -3,6 +3,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
+COPY static/ ./static/
+COPY data/ ./data/
 ENV PORT=5000
 EXPOSE 5000
 # Production server: gunicorn (2 workers x 4 threads). Tables are created
