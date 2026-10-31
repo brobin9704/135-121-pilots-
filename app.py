@@ -420,9 +420,10 @@ AUTOFILL_JS = """<script>
   function ensure(){
     if(db){lookup();return;}
     if(loading)return;loading=true;
-    fetch('/static/airports.json').then(function(r){return r.json();}).then(function(j){db=j;loading=false;lookup();}).catch(function(){loading=false;});
+    fetch('/static/airports.json?v=2').then(function(r){return r.json();}).then(function(j){db=j;loading=false;lookup();}).catch(function(){loading=false;});
   }
   codeEl.addEventListener('input',ensure);
+  codeEl.addEventListener('change',ensure);
   cityEl.addEventListener('input',function(){cityEl.dataset.auto='';});
 })();
 </script>"""
