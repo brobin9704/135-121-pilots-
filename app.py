@@ -727,6 +727,9 @@ def friends():
     user = current_user()
     db = get_db()
     flash = None
+    error = None
+    friend_ids = {r["friend_id"] for r in db.execute(
+        "SELECT friend_id FROM friends WHERE user_id=?", (user["id"],)).fetchall()}
     if request.method == "POST":
         remove_id = request.form.get("remove_id")
         if remove_id:
@@ -734,20 +737,34 @@ def friends():
             db.execute("DELETE FROM friends WHERE (user_id=? AND friend_id=?) OR (user_id=? AND friend_id=?)",
                        (user["id"], rid, rid, user["id"]))
             db.commit()
+            friend_ids.discard(rid)
             flash = "Friend removed."
-        friend_id = request.form.get("friend_id")
-        if friend_id:
-            fid = int(friend_id)
-            if USE_POSTGRES:
-                db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
-                           "ON CONFLICT (user_id, friend_id) DO NOTHING", (user["id"], fid))
-                db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
-                           "ON CONFLICT (user_id, friend_id) DO NOTHING", (fid, user["id"]))
+        pilot_name = request.form.get("pilot_name", "").strip()
+        if pilot_name:
+            want = pilot_name.lower()
+            named = [u for u in db.execute("SELECT * FROM users WHERE id != ?", (user["id"],)).fetchall()
+                     if (u["name"] or "").strip().lower() == want]
+            new = [u for u in named if u["id"] not in friend_ids]
+            if len(new) == 1:
+                fid = new[0]["id"]
+                if USE_POSTGRES:
+                    db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
+                               "ON CONFLICT (user_id, friend_id) DO NOTHING", (user["id"], fid))
+                    db.execute("INSERT INTO friends (user_id, friend_id) VALUES (?,?) "
+                               "ON CONFLICT (user_id, friend_id) DO NOTHING", (fid, user["id"]))
+                else:
+                    db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (user["id"], fid))
+                    db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (fid, user["id"]))
+                db.commit()
+                friend_ids.add(fid)
+                flash = f"Added {esc(new[0]['name'])} as a friend."
+            elif len(new) > 1:
+                detail = ", ".join(f"{esc(m['name'])} ({esc(m['airline'])} · {esc(m['base'])})" for m in new)
+                error = f"More than one pilot is named '{esc(pilot_name)}': {detail}."
+            elif named:
+                error = f"'{esc(pilot_name)}' is already your friend."
             else:
-                db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (user["id"], fid))
-                db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (fid, user["id"]))
-            db.commit()
-            flash = "Friend added."
+                error = f"No pilot named '{esc(pilot_name)}' found. Use the name on their account."
     rows = db.execute(
         "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
     ).fetchall()
@@ -770,10 +787,10 @@ def friends():
     others = db.execute(
         "SELECT * FROM users WHERE id != ? AND id NOT IN (SELECT friend_id FROM friends WHERE user_id = ?)",
         (user["id"], user["id"])).fetchall()
-    options = "".join(f'<option value="{o["id"]}">{esc(o["name"])} ({esc(o["email"])})</option>' for o in others)
     if others:
         add_card = (f'<div class="card"><h2>Add a friend</h2><form method="post">'
-                    f'<label>Choose a pilot</label><select name="friend_id">{options}</select>'
+                    f"<label>Pilot's name (as on their account)</label>"
+                    f'<input name="pilot_name" placeholder="Jane Doe" autocomplete="off" required>'
                     f'<button type="submit">Add friend</button></form></div>')
     else:
         add_card = ('<div class="card"><h2>Add a friend</h2>'
@@ -782,7 +799,7 @@ def friends():
       <p class="muted">Friends show as nearby only when their check-in matches yours.</p>
       <ul>{items or '<li class="muted">No friends yet.</li>'}</ul></div>
       {add_card}"""
-    return page("Friends", user, body, flash=flash)
+    return page("Friends", user, body, flash=flash, error=error)
 
 if __name__ == "__main__":
     init_db()
