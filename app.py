@@ -707,7 +707,7 @@ def external_results_html(kind, data, user):
         web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
         add = (url_for("new_review") + "?" + urllib.parse.urlencode(
             {"kind": kind, "place": r["name"], "airport": checkin["airport_code"], "city": checkin["city"]}))
-        cards += f"""<div class="card"><strong>{esc(r['name'])}</strong> <span class="muted">{r['distance']} mi</span>
+        cards += f"""<div class="card"><a href="{add}"><strong>{esc(r['name'])}</strong></a> <span class="muted">{r['distance']} mi</span>
           {detail}<div>Address: {esc(r['address'])}</div><div>Phone: {esc(r['phone'])}</div>{web}
           <p><a href="{add}">Add review</a></p></div>"""
     return header + cards
