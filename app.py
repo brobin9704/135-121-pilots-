@@ -12,6 +12,7 @@ Production: gunicorn app:app  (see Dockerfile / render.yaml)
 """
 import math
 import base64
+import io
 import json
 import os
 import sqlite3
@@ -19,7 +20,13 @@ import urllib.parse
 import urllib.request
 from datetime import date
 
-from flask import Flask, g, jsonify, redirect, render_template_string, request, session, url_for
+try:
+    from PIL import Image
+    _PIL_OK = True
+except ImportError:
+    _PIL_OK = False
+
+from flask import Flask, Response, g, jsonify, redirect, render_template_string, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
@@ -112,6 +119,12 @@ SQLITE_SCHEMA = """
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE(user_id, kind)
     );
+    CREATE TABLE IF NOT EXISTS photos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        review_id INTEGER NOT NULL REFERENCES reviews(id),
+        data TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS reviews (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
@@ -159,6 +172,12 @@ POSTGRES_SCHEMA = """
         centre TEXT, results TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         UNIQUE(user_id, kind)
+    );
+    CREATE TABLE IF NOT EXISTS photos (
+        id SERIAL PRIMARY KEY,
+        review_id INTEGER NOT NULL REFERENCES reviews(id),
+        data TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS reviews (
         id SERIAL PRIMARY KEY,
@@ -454,6 +473,8 @@ input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8p
 button,.btn-primary{background:#0284c7;color:#fff;border:0;padding:12px 16px;border-radius:10px;font-size:16px;cursor:pointer;width:100%}
 label{font-weight:600}.muted{color:#94a3b8}.stars{color:#facc15;letter-spacing:2px}
 .tag{display:inline-block;background:#0f172a;border:1px solid #475569;border-radius:999px;padding:2px 10px;margin:2px;font-size:13px}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.thumbs img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid #475569}
 .flash{background:#365314;border:1px solid #65a30d;padding:10px;border-radius:10px;margin:12px 0}
 .error{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:12px 0}
 @media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}}
@@ -541,6 +562,39 @@ def esc(s):
 def stars(n):
     return "★" * int(n) + "☆" * (5 - int(n))
 
+def _save_review_photos(db, review_id, files):
+    """Store up to 5 uploaded images for a review, resized to JPEG. Returns count saved."""
+    if not _PIL_OK:
+        return 0
+    saved = 0
+    for f in files or []:
+        if saved >= 5 or not f or not f.filename:
+            continue
+        try:
+            img = Image.open(f.stream)
+            img.verify()
+            f.stream.seek(0)
+            img = Image.open(f.stream).convert("RGB")
+            img.thumbnail((1200, 1200))
+            buf = io.BytesIO()
+            img.save(buf, "JPEG", quality=72)
+            db.execute("INSERT INTO photos (review_id, data) VALUES (?,?)",
+                       (review_id, base64.b64encode(buf.getvalue()).decode()))
+            saved += 1
+        except Exception:
+            continue
+    return saved
+
+def review_photos_html(review_id):
+    rows = get_db().execute("SELECT id FROM photos WHERE review_id=? ORDER BY id", (review_id,)).fetchall()
+    if not rows:
+        return ""
+    thumbs = "".join(
+        f'<a href="{url_for("photo", photo_id=r["id"])}" target="_blank" rel="noopener">'
+        f'<img src="{url_for("photo", photo_id=r["id"])}" alt="Review photo" loading="lazy"></a>'
+        for r in rows)
+    return f'<div class="thumbs">{thumbs}</div>'
+
 def review_card(r, user):
     tags = "".join(f'<span class="tag">{esc(t.strip())}</span>' for t in (r["tags"] or "").split(",") if t.strip())
     delete = ""
@@ -549,9 +603,10 @@ def review_card(r, user):
           <button type="submit" style="background:#7f1d1d;width:auto;padding:8px 12px">Delete my review</button></form>"""
     loc_query = ", ".join(p for p in [r["place_name"] or "", r["city"] or ""] if p)
     loc_url = "https://www.openstreetmap.org/search?" + urllib.parse.urlencode({"query": loc_query})
+    photos = review_photos_html(r["id"])
     return f"""<div class="card"><a href="{loc_url}" target="_blank" rel="noopener"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>
       <div class="muted">{esc(r['airport_code'])} · {esc(r['city'])} · by {esc(r['author'])}</div>
-      <div>{tags}</div><p>{esc(r['notes'])}</p>{delete}</div>"""
+      <div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{delete}</div>"""
 
 def saved_reviews_section(kind, user, q, scope):
     in_results, all_results, checkin = search_saved_reviews(kind, q, scope, user)
@@ -798,11 +853,20 @@ def new_review():
         custom = request.form.get("custom_tags", "").strip()
         tags = ", ".join([t for t in chosen] + ([custom] if custom else []))
         db = get_db()
-        db.execute(
-            "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, rating, tags, notes) VALUES (?,?,?,?,?,?,?,?)",
-            (user["id"], kind, request.form.get("place_name", "").strip(),
-             request.form.get("airport_code", "").strip().upper(), request.form.get("city", "").strip(),
-             int(request.form.get("rating", 5)), tags, request.form.get("notes", "").strip()))
+        params = (user["id"], kind, request.form.get("place_name", "").strip(),
+                  request.form.get("airport_code", "").strip().upper(), request.form.get("city", "").strip(),
+                  int(request.form.get("rating", 5)), tags, request.form.get("notes", "").strip())
+        if USE_POSTGRES:
+            cur = db.execute(
+                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, rating, tags, notes) "
+                "VALUES (?,?,?,?,?,?,?,?) RETURNING id", params)
+            review_id = cur.fetchone()["id"]
+        else:
+            cur = db.execute(
+                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, rating, tags, notes) "
+                "VALUES (?,?,?,?,?,?,?,?)", params)
+            review_id = cur.lastrowid
+        _save_review_photos(db, review_id, request.files.getlist("photos"))
         db.commit()
         return redirect(url_for("hotels" if kind == "hotel" else "restaurants"))
     kind = request.args.get("kind", "hotel")
@@ -812,7 +876,7 @@ def new_review():
     boxes = "".join(
         f'<label><input type="checkbox" name="tag" value="{esc(t)}" style="width:auto"> {esc(t)}</label><br>' for t in COMMON_TAGS)
     body = f"""<div class="card"><h2>Add a {esc(kind)} review</h2>
-      <form method="post"><input type="hidden" name="kind" value="{esc(kind)}">
+      <form method="post" enctype="multipart/form-data"><input type="hidden" name="kind" value="{esc(kind)}">
       <label>Place name</label><input name="place_name" value="{esc(place)}" required>
       <label>Airport code</label><input name="airport_code" value="{esc(airport)}">
       <label>City</label><input name="city" value="{esc(city)}">
@@ -822,14 +886,25 @@ def new_review():
       <label>Pilot tags</label><div>{boxes}</div>
       <label>Other tags (comma-separated)</label><input name="custom_tags">
       <label>Notes</label><textarea name="notes" rows="4"></textarea>
+      <label>Photos (up to 5)</label><input type="file" name="photos" accept="image/*" multiple>
       <button type="submit">Save review</button></form></div>"""
     return page("Add review", user, body)
+
+@app.route("/photo/<int:photo_id>")
+@login_required
+def photo(photo_id):
+    row = get_db().execute("SELECT data FROM photos WHERE id=?", (photo_id,)).fetchone()
+    if not row:
+        return "Not found", 404
+    return Response(base64.b64decode(row["data"]), mimetype="image/jpeg")
 
 @app.route("/reviews/<int:review_id>/delete", methods=["POST"])
 @login_required
 def delete_review(review_id):
     user = current_user()
     db = get_db()
+    db.execute("DELETE FROM photos WHERE review_id IN (SELECT id FROM reviews WHERE id=? AND user_id=?)",
+               (review_id, user["id"]))
     db.execute("DELETE FROM reviews WHERE id = ? AND user_id = ?", (review_id, user["id"]))
     db.commit()
     return redirect(url_for("board"))
