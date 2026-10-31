@@ -509,6 +509,7 @@ def page(title, user, body, flash=None, error=None):
           <a href="{url_for('hotels')}">Hotels</a>
           <a href="{url_for('restaurants')}">Restaurants</a>
           <a href="{url_for('friends')}">Friends</a>
+          <a href="{url_for('profile')}">My Profile</a>
           <a href="{url_for('logout')}">Log out ({user['name']})</a>
         </nav>"""
     msg = f'<div class="flash">{flash}</div>' if flash else ""
@@ -626,6 +627,36 @@ def login_form():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    user = current_user()
+    db = get_db()
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        if not name or not email:
+            return page("My Profile", user, profile_form(user), error="Name and email are required.")
+        clash = db.execute("SELECT id FROM users WHERE email = ? AND id != ?", (email, user["id"])).fetchone()
+        if clash:
+            return page("My Profile", user, profile_form(user), error="That email is already used by another account.")
+        db.execute("UPDATE users SET name=?, airline=?, base=?, aircraft=?, email=? WHERE id=?",
+                   (name, request.form.get("airline", "").strip(), request.form.get("base", "").strip(),
+                    request.form.get("aircraft", "").strip(), email, user["id"]))
+        db.commit()
+        user = current_user()
+        return page("My Profile", user, profile_form(user), flash="Profile updated.")
+    return page("My Profile", user, profile_form(user))
+
+def profile_form(user):
+    return f"""<div class="card"><h2>My Profile</h2>
+    <form method="post"><label>Name</label><input name="name" value="{esc(user['name'])}" required>
+    <label>Airline</label><input name="airline" value="{esc(user['airline'])}">
+    <label>Base</label><input name="base" value="{esc(user['base'])}">
+    <label>Aircraft</label><input name="aircraft" value="{esc(user['aircraft'])}">
+    <label>Email</label><input type="email" name="email" value="{esc(user['email'])}" required>
+    <button type="submit">Save</button></form></div>"""
 
 @app.route("/")
 def index():
