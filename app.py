@@ -432,30 +432,21 @@ def nominatim_fallback(lat, lon, radius_miles, kind, city):
     out.sort(key=lambda x: x["distance"])
     return out
 
-def places_at_checkin(checkin, radius_miles, kind):
-    """Real OpenStreetMap results around the check-in place. No device location."""
+def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
+    """Real OpenStreetMap results around a coordinate pair."""
     if kind == "hotel":
         filt = 'tourism~"hotel|motel|guest_house|hostel"'
     else:
         filt = 'amenity~"restaurant|cafe|fast_food"'
-    centre = None
-    for query in (f"{checkin['airport_code']} airport {checkin['city']}",
-                  f"{checkin['airport_code']} {checkin['city']}",
-                  checkin["city"]):
-        centre = geocode_place(query)
-        if centre:
-            break
-    if not centre:
-        return None, None, "Could not resolve the check-in place. Check the airport code and city, then try again."
-    lat, lon, display = centre
+    centre = (lat, lon, display or f"{lat:.4f}, {lon:.4f}")
     try:
         elements = overpass_query(lat, lon, radius_miles, filt)
     except Exception:
         # Overpass mirrors are busy: fall back to a place-type search, filtered by distance.
-        fallback = nominatim_fallback(lat, lon, radius_miles, kind, checkin["city"])
+        fallback = nominatim_fallback(lat, lon, radius_miles, kind, city_hint)
         if fallback:
-            return (lat, lon, display), fallback, None
-        return (lat, lon, display), [], "Listing service is busy — try again in a moment."
+            return centre, fallback, None
+        return centre, [], "Listing service is busy — try again in a moment."
     seen, results = set(), []
     for el in elements:
         tags = el.get("tags", {}) or {}
@@ -485,7 +476,22 @@ def places_at_checkin(checkin, radius_miles, kind):
             "distance": round(dist, 1),
         })
     results.sort(key=lambda r: r["distance"])
-    return (lat, lon, display), results, None
+    return centre, results, None
+
+
+def places_at_checkin(checkin, radius_miles, kind):
+    """Real OpenStreetMap results around the check-in place. No device location."""
+    centre = None
+    for query in (f"{checkin['airport_code']} airport {checkin['city']}",
+                  f"{checkin['airport_code']} {checkin['city']}",
+                  checkin["city"]):
+        centre = geocode_place(query)
+        if centre:
+            break
+    if not centre:
+        return None, None, "Could not resolve the check-in place. Check the airport code and city, then try again."
+    lat, lon, display = centre
+    return places_at_coords(lat, lon, radius_miles, kind, display=display, city_hint=checkin["city"])
 
 # ---------------------------------------------------------------- rendering
 CSS = """
@@ -827,17 +833,10 @@ def index():
     return page("Home", user, body, home=True)
 
 # ---------------------------------------------------------------- board
-@app.route("/nearest_airport")
-@login_required
-def nearest_airport():
-    """Nearest airport to a tap-initiated GPS fix. Nothing is stored."""
-    try:
-        lat = float(request.args.get("lat", ""))
-        lon = float(request.args.get("lon", ""))
-    except (TypeError, ValueError):
-        return jsonify({"error": "bad coordinates"}), 400
+def nearest_airport_for(lat, lon):
+    """(code, city, name, distance_mi) of the nearest bundled airport, or Nones."""
     if not AIRPORT_COORDS:
-        return jsonify({"error": "airport data unavailable"}), 503
+        return None, None, None, None
     best, best_d = None, None
     for code, (alat, alon, city, name) in AIRPORT_COORDS.items():
         # Haversine distance in miles.
@@ -848,8 +847,25 @@ def nearest_airport():
         d = 2 * 3958.8 * math.asin(math.sqrt(a))
         if best_d is None or d < best_d:
             best, best_d = (code, city, name), d
+    if best is None:
+        return None, None, None, None
     code, city, name = best
-    return jsonify({"code": code, "city": city, "name": name, "distance_mi": round(best_d, 1)})
+    return code, city, name, round(best_d, 1)
+
+
+@app.route("/nearest_airport")
+@login_required
+def nearest_airport():
+    """Nearest airport to a tap-initiated GPS fix. Nothing is stored."""
+    try:
+        lat = float(request.args.get("lat", ""))
+        lon = float(request.args.get("lon", ""))
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad coordinates"}), 400
+    code, city, name, dist = nearest_airport_for(lat, lon)
+    if code is None:
+        return jsonify({"error": "airport data unavailable"}), 503
+    return jsonify({"code": code, "city": city, "name": name, "distance_mi": dist})
 
 def current_checkin_html(checkin):
     """Card showing the user's active check-in (hotel/restaurant places link to the review form)."""
@@ -1173,14 +1189,12 @@ def load_search_cache(user_id, kind, checkin):
     return row["radius"], centre, json.loads(row["results"] or "[]")
 
 def at_location_section(kind, user, radius_options, default_radius):
-    """The 'at my location' card. Location = check-in only.
+    """The 'at my location' card: check-in location and/or one-tap GPS.
+    GPS coordinates are used for that one search only — never stored, no tracking.
     Search results are kept until the pilot checks in somewhere else."""
     checkin = current_checkin(user["id"])
-    if not checkin:
-        return ('<div class="card"><h2>Search ' + kind + 's at my location</h2>'
-                '<p>Check in on the <a href="' + url_for("board") + '">Check-In</a> first, '
-                'then come back here to search around your check-in location.</p></div>', None, None)
-    radius_raw = request.args.get("radius", str(default_radius))
+    radius_raw = (request.form.get("radius") if request.method == "POST"
+                  else request.args.get("radius")) or str(default_radius)
     try:
         radius = int(radius_raw)
     except ValueError:
@@ -1191,29 +1205,85 @@ def at_location_section(kind, user, radius_options, default_radius):
         radius = max(1, min(radius, 20))
     else:
         radius = max(1, min(radius, 10))
-    if request.args.get("at_checkin") == "1":
+    data = None
+    gps_error = None
+    if request.method == "POST" and request.form.get("gps") == "1":
+        try:
+            lat = float(request.form.get("lat", ""))
+            lon = float(request.form.get("lon", ""))
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                raise ValueError
+        except (TypeError, ValueError):
+            lat = lon = None
+            gps_error = "Could not read your location. Try again."
+        if lat is not None:
+            code, city, _name, _dist = nearest_airport_for(lat, lon)
+            centre, results, error = places_at_coords(
+                lat, lon, radius, kind, display="your current location", city_hint=city or "")
+            # Nearest airport gives the Add review / Check in buttons an airport + city.
+            data = (centre, results, error, radius,
+                    {"airport_code": code or "", "city": city or ""})
+    elif checkin and request.args.get("at_checkin") == "1":
         centre, results, error = places_at_checkin(checkin, radius, kind)
         if results is not None:
             save_search_cache(user["id"], kind, checkin, radius, centre, results)
         data = (centre, results, error, radius, checkin)
-    else:
+    elif checkin:
         cached = load_search_cache(user["id"], kind, checkin)
         if cached:
             radius, centre, results = cached
             data = (centre, results, None, radius, checkin)
         else:
-            radius, data = default_radius, None
+            radius = default_radius
     radios = "".join(
         f'<label><input type="radio" name="radius" value="{r}" style="width:auto" {"checked" if r == radius else ""}> {r} miles</label> '
         for r in radius_options)
-    card = f"""<div class="card"><h2>Search {kind}s at my location</h2>
-      <p class="muted">Uses your check-in location: {esc(checkin['airport_code'])} · {esc(checkin['city'])}. No other location is used.</p>
-      <form method="get"><input type="hidden" name="at_checkin" value="1">{radios}
-      <button type="submit">Search {kind}s at my location</button></form></div>"""
+    gps_radios = "".join(
+        f'<label><input type="radio" name="gps_radius" value="{r}" style="width:auto" {"checked" if r == radius else ""}> {r} miles</label> '
+        for r in radius_options)
+    if checkin:
+        checkin_part = (f'<p class="muted">Uses your check-in location: {esc(checkin["airport_code"])} · '
+                        f'{esc(checkin["city"])}.</p>'
+                        f'<form method="get"><input type="hidden" name="at_checkin" value="1">{radios}'
+                        f'<button type="submit">Search {kind}s at my check-in</button></form>')
+    else:
+        checkin_part = ('<p class="muted">Check in on the <a href="' + url_for("board") + '">Check-In</a> '
+                        'page to also search around your check-in location.</p>')
+    card = f"""<div class="card"><h2>Search {kind}s at my location</h2>{checkin_part}
+      <p class="muted">Or use your current GPS location — one tap, used for this search only, never stored.</p>
+      <div>{gps_radios}</div>
+      <p><button type="button" id="gps_btn_{kind}">Use my current location</button>
+      <span class="muted" id="gps_msg_{kind}"></span></p>
+      <form id="gps_form_{kind}" method="post" style="display:none">
+      <input type="hidden" name="gps" value="1">
+      <input type="hidden" name="radius" id="gps_radius_val_{kind}" value="{radius}">
+      <input type="hidden" name="lat" id="gps_lat_{kind}">
+      <input type="hidden" name="lon" id="gps_lon_{kind}"></form></div>
+      <script>
+      (function(){{
+        var btn = document.getElementById('gps_btn_{kind}');
+        var msg = document.getElementById('gps_msg_{kind}');
+        btn.addEventListener('click', function(){{
+          if (!navigator.geolocation) {{ msg.textContent = 'Location is not available on this device.'; return; }}
+          msg.textContent = 'Getting your location…';
+          navigator.geolocation.getCurrentPosition(function(pos){{
+            var sel = document.querySelector('input[name="gps_radius"]:checked');
+            document.getElementById('gps_radius_val_{kind}').value = sel ? sel.value : '{radius}';
+            document.getElementById('gps_lat_{kind}').value = pos.coords.latitude;
+            document.getElementById('gps_lon_{kind}').value = pos.coords.longitude;
+            document.getElementById('gps_form_{kind}').submit();
+          }}, function(){{
+            msg.textContent = 'Location unavailable — allow location access for this site and try again.';
+          }}, {{timeout: 15000, maximumAge: 60000}});
+        }});
+      }})();
+      </script>"""
+    if gps_error:
+        card += f'<div class="error">{esc(gps_error)}</div>'
     return card, data, checkin
 
 def external_results_html(kind, data, user):
-    centre, results, error, radius, checkin = data
+    centre, results, error, radius, place = data
     if error and not results:
         return f'<div class="error">{esc(error)}</div>'
     if centre:
@@ -1232,20 +1302,22 @@ def external_results_html(kind, data, user):
             detail = f"<div>Cuisine: {esc(r['cuisine'])}</div><div>Hours: {esc(r['hours'])}</div>"
         web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
         add = (url_for("new_review") + "?" + urllib.parse.urlencode(
-            {"kind": kind, "place": r["name"], "airport": checkin["airport_code"], "city": checkin["city"]}))
-        checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px">'
-            f'<input type="hidden" name="action" value="checkin">'
-            f'<input type="hidden" name="airport_code" value="{esc(checkin["airport_code"])}">'
-            f'<input type="hidden" name="city" value="{esc(checkin["city"])}">'
-            f'<input type="hidden" name="place_name" value="{esc(r["name"])}">'
-            f'<input type="hidden" name="kind" value="{kind}">'
-            f'<button type="submit" style="width:auto;padding:6px 12px">Check in</button></form>')
+            {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"]}))
+        checkin_btn = ""
+        if place["airport_code"]:
+            checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px">'
+                f'<input type="hidden" name="action" value="checkin">'
+                f'<input type="hidden" name="airport_code" value="{esc(place["airport_code"])}">'
+                f'<input type="hidden" name="city" value="{esc(place["city"])}">'
+                f'<input type="hidden" name="place_name" value="{esc(r["name"])}">'
+                f'<input type="hidden" name="kind" value="{kind}">'
+                f'<button type="submit" style="width:auto;padding:6px 12px">Check in</button></form>')
         cards += f"""<div class="card"><a href="{add}"><strong>{esc(r['name'])}</strong></a> <span class="muted">{r['distance']} mi</span>
           {detail}<div>Address: {esc(r['address'])}</div><div>Phone: {esc(r['phone'])}</div>{web}
           <p><a href="{add}">Add review</a></p>{checkin_btn}</div>"""
     return header + cards
 
-@app.route("/hotels")
+@app.route("/hotels", methods=["GET", "POST"])
 @login_required
 def hotels():
     user = current_user()
@@ -1256,7 +1328,7 @@ def hotels():
     body = card + ext + saved_reviews_section("hotel", user, q, scope)
     return page("Hotels", user, body)
 
-@app.route("/restaurants")
+@app.route("/restaurants", methods=["GET", "POST"])
 @login_required
 def restaurants():
     user = current_user()
