@@ -788,6 +788,17 @@ def logout():
 def profile():
     user = current_user()
     db = get_db()
+    if request.method == "POST" and request.form.get("form") == "password":
+        new = request.form.get("new_password", "")
+        row = db.execute("SELECT password_hash FROM users WHERE id=?", (user["id"],)).fetchone()
+        if not row or not check_password_hash(row["password_hash"], request.form.get("current_password", "")):
+            return page("My Profile", user, profile_form(user), error="Current password did not match.")
+        if len(new) < 8:
+            return page("My Profile", user, profile_form(user), error="New password must be at least 8 characters.")
+        db.execute("UPDATE users SET password_hash=? WHERE id=?",
+                   (generate_password_hash(new), user["id"]))
+        db.commit()
+        return page("My Profile", user, profile_form(user), flash="Password changed.")
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
@@ -811,7 +822,12 @@ def profile_form(user):
     <label>Base</label><input name="base" value="{esc(user['base'])}">
     <label>Aircraft</label><input name="aircraft" value="{esc(user['aircraft'])}">
     <label>Email</label><input type="email" name="email" value="{esc(user['email'])}" required>
-    <button type="submit">Save</button></form></div>"""
+    <button type="submit">Save</button></form></div>
+    <div class="card"><h2>Change password</h2>
+    <form method="post"><input type="hidden" name="form" value="password">
+    <label>Current password</label><input type="password" name="current_password" required autocomplete="current-password">
+    <label>New password (at least 8 characters)</label><input type="password" name="new_password" required autocomplete="new-password">
+    <button type="submit">Change password</button></form></div>"""
 
 @app.route("/")
 @login_required
