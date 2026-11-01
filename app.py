@@ -650,16 +650,17 @@ def review_photos_html(review_id):
 
 def review_card(r, user):
     tags = "".join(f'<span class="tag">{esc(t.strip())}</span>' for t in (r["tags"] or "").split(",") if t.strip())
-    delete = ""
+    own = ""
     if user and r["user_id"] == user["id"]:
-        delete = f"""<form method="post" action="{url_for('delete_review', review_id=r['id'])}" style="margin-top:10px">
+        own = f"""<p style="margin:10px 0 0"><a href="{url_for('edit_review', review_id=r['id'])}">Edit my review</a></p>
+          <form method="post" action="{url_for('delete_review', review_id=r['id'])}" style="margin-top:6px">
           <button type="submit" style="background:#7f1d1d;width:auto;padding:8px 12px">Delete my review</button></form>"""
     loc_query = ", ".join(p for p in [r["place_name"] or "", r["city"] or ""] if p)
     loc_url = "https://www.openstreetmap.org/search?" + urllib.parse.urlencode({"query": loc_query})
     photos = review_photos_html(r["id"])
     return f"""<div class="card"><a href="{loc_url}" target="_blank" rel="noopener"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>
       <div class="muted">{esc(r['airport_code'])} · {esc(r['city'])} · by {esc(r['author'])}</div>
-      <div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{delete}</div>"""
+      <div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{own}</div>"""
 
 def saved_reviews_section(kind, user, q, scope):
     in_results, all_results, checkin = search_saved_reviews(kind, q, scope, user)
@@ -1027,6 +1028,96 @@ def new_review():
       <label>Photos (up to 5)</label><input type="file" name="photos" accept="image/*" multiple>
       <button type="submit">Save review</button></form></div>"""
     return page("Add review", user, body)
+
+def _edit_review_form(vals, kind, tag_list, photo_rows):
+    existing_tags = [t.strip() for t in (vals.get("tags") or "").split(",") if t.strip()]
+    boxes = "".join(
+        f'<label><input type="checkbox" name="tag" value="{esc(t)}" style="width:auto"'
+        f'{" checked" if t in existing_tags else ""}> {esc(t)}</label><br>'
+        for t in tag_list)
+    custom = ", ".join(t for t in existing_tags if t not in tag_list)
+    try:
+        rating = int(vals.get("rating", 5))
+    except (TypeError, ValueError):
+        rating = 5
+    opts = "".join(
+        f'<option value="{n}"{" selected" if rating == n else ""}>{n} star{"s" if n > 1 else ""}</option>'
+        for n in (5, 4, 3, 2, 1))
+    thumbs = ""
+    if photo_rows:
+        thumbs = "".join(
+            f'<label style="display:inline-block;margin:4px;text-align:center;vertical-align:top">'
+            f'<img src="{url_for("photo", photo_id=p["id"])}" alt="Review photo" '
+            f'style="width:90px;height:90px;object-fit:cover;border-radius:8px;display:block">'
+            f'<input type="checkbox" name="remove_photo" value="{p["id"]}" style="width:auto"> remove</label>'
+            for p in photo_rows)
+        thumbs = f"<div>{thumbs}</div>"
+    remaining = 5 - len(photo_rows)
+    return f"""<div class="card"><h2>Edit {esc(kind)} review</h2>
+      <form method="post" enctype="multipart/form-data">
+      <label>Place name</label><input name="place_name" value="{esc(vals.get('place_name', ''))}" required>
+      <label>Airport code</label><input name="airport_code" value="{esc(vals.get('airport_code', ''))}">
+      <label>City</label><input name="city" value="{esc(vals.get('city', ''))}">
+      <label>Star rating</label><select name="rating">{opts}</select>
+      <label>Pilot tags</label><div>{boxes}</div>
+      <label>Other tags (comma-separated)</label><input name="custom_tags" value="{esc(custom)}">
+      <label>Notes</label><textarea name="notes" rows="4">{esc(vals.get('notes', ''))}</textarea>
+      <label>Photos (up to 5 total{f' — {remaining} more allowed' if remaining else ''})</label>{thumbs}
+      <input type="file" name="photos" accept="image/*" multiple>
+      <button type="submit">Save changes</button></form></div>"""
+
+
+@app.route("/reviews/<int:review_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_review(review_id):
+    user = current_user()
+    db = get_db()
+    r = db.execute("SELECT * FROM reviews WHERE id=?", (review_id,)).fetchone()
+    if not r or r["user_id"] != user["id"]:
+        return "Not found", 404
+    kind = r["kind"] if r["kind"] in ("hotel", "restaurant") else "hotel"
+    tag_list = RESTAURANT_TAGS if kind == "restaurant" else HOTEL_TAGS
+    photo_rows = db.execute("SELECT id FROM photos WHERE review_id=? ORDER BY id", (review_id,)).fetchall()
+    if request.method == "POST":
+        vals = {
+            "place_name": request.form.get("place_name", "").strip(),
+            "airport_code": request.form.get("airport_code", "").strip().upper(),
+            "city": request.form.get("city", "").strip(),
+            "rating": request.form.get("rating", 5),
+            "notes": request.form.get("notes", "").strip(),
+        }
+        chosen = request.form.getlist("tag")
+        custom = request.form.get("custom_tags", "").strip()
+        vals["tags"] = ", ".join([t for t in chosen] + ([custom] if custom else []))
+        try:
+            rating = int(vals["rating"])
+        except (TypeError, ValueError):
+            rating = 5
+        rating = max(1, min(5, rating))
+        vals["rating"] = rating
+        # Photo budget: removals first, then new uploads, max 5 total.
+        remove_ids = {int(x) for x in request.form.getlist("remove_photo") if x.isdigit()}
+        kept = [p for p in photo_rows if p["id"] not in remove_ids]
+        new_files = [f for f in request.files.getlist("photos") if f and f.filename]
+        if len(kept) + len(new_files) > 5:
+            return page("Edit review", user,
+                        _edit_review_form(vals, kind, tag_list, photo_rows),
+                        error=f"That would be {len(kept) + len(new_files)} photos — the limit is 5 per review.")
+        db.execute(
+            "UPDATE reviews SET place_name=?, airport_code=?, city=?, rating=?, tags=?, notes=? "
+            "WHERE id=? AND user_id=?",
+            (vals["place_name"], vals["airport_code"], vals["city"], rating, vals["tags"],
+             vals["notes"], review_id, user["id"]))
+        for pid in remove_ids:
+            db.execute("DELETE FROM photos WHERE id=? AND review_id=?", (pid, review_id))
+        _save_review_photos(db, review_id, new_files)
+        db.commit()
+        return redirect(url_for("hotels" if kind == "hotel" else "restaurants"))
+    vals = {"place_name": r["place_name"] or "", "airport_code": r["airport_code"] or "",
+            "city": r["city"] or "", "rating": r["rating"], "tags": r["tags"] or "",
+            "notes": r["notes"] or ""}
+    return page("Edit review", user, _edit_review_form(vals, kind, tag_list, photo_rows))
+
 
 @app.route("/photo/<int:photo_id>")
 @login_required
