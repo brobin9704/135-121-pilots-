@@ -566,6 +566,59 @@ AUTOFILL_JS = """<script>
 
 # "Find me" button: one tap-initiated GPS fix -> nearest airport fills the form.
 # Nothing is stored or tracked; coordinates are only used for the lookup.
+LOCMAP_JS = """
+<script>
+(function(){
+  var btn=document.getElementById('locmap_btn'),msg=document.getElementById('locmap_msg'),div=document.getElementById('locmap');
+  if(!btn)return;
+  var map=null,loaded=false,loading=false;
+  function say(t){ if(msg)msg.textContent=t; }
+  function loadLeaflet(cb){
+    if(loaded)return cb();
+    if(loading){ var iv=setInterval(function(){ if(loaded){clearInterval(iv);cb();} },200); return; }
+    loading=true;
+    var l=document.createElement('link'); l.rel='stylesheet';
+    l.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(l);
+    var s=document.createElement('script');
+    s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    s.onload=function(){ loaded=true; cb(); };
+    s.onerror=function(){ loading=false; say('Could not load the map. Check your connection and try again.'); };
+    document.head.appendChild(s);
+  }
+  btn.addEventListener('click',function(){
+    if(!navigator.geolocation){ say('Location is not available on this device.'); return; }
+    say('Getting your location\u2026');
+    navigator.geolocation.getCurrentPosition(function(pos){
+      loadLeaflet(function(){
+        var lat=pos.coords.latitude,lon=pos.coords.longitude;
+        div.style.display='block';
+        if(!map){
+          map=L.map('locmap').setView([lat,lon],14);
+          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+            maxZoom:19,attribution:'\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          }).addTo(map);
+        }else{ map.setView([lat,lon],14); }
+        map.eachLayer(function(ly){ if(ly instanceof L.Marker||ly instanceof L.Circle)map.removeLayer(ly); });
+        L.marker([lat,lon]).addTo(map).bindPopup('You are here').openPopup();
+        if(pos.coords.accuracy)L.circle([lat,lon],{radius:pos.coords.accuracy}).addTo(map);
+        setTimeout(function(){ map.invalidateSize(); },100);
+        say('');
+      });
+    },function(err){
+      say(err.code===1?'Location permission was denied.':'Could not get your location. Try again.');
+    },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+  });
+})();
+</script>
+"""
+
+LOCMAP_HTML = """<div class="card"><h2>My location</h2>
+      <p class="muted">Show your phone\u2019s current location on a map. One-time fix \u2014 your coordinates stay on your phone and are never stored.</p>
+      <p><button type="button" id="locmap_btn">Show my location on a map</button></p>
+      <p class="muted" id="locmap_msg"></p>
+      <div id="locmap" style="display:none;height:320px;border-radius:12px;overflow:hidden"></div></div>"""
+
 FINDME_JS = """<script>
 (function(){
   var btn=document.getElementById('findme'),msg=document.getElementById('findme_msg');
@@ -1183,6 +1236,7 @@ def board():
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
       <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
+      {LOCMAP_HTML}{LOCMAP_JS}
       {friends_nearby_html(db, user, checkin)}{area_reviews_html(db, user, checkin)}{history_html}"""
     return page("Check-In", user, body, flash=flash)
 
