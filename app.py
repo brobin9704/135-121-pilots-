@@ -92,6 +92,7 @@ SQLITE_SCHEMA = """
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL, airline TEXT, base TEXT, aircraft TEXT,
         email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'pilot',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS checkins (
@@ -147,6 +148,7 @@ POSTGRES_SCHEMA = """
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL, airline TEXT, base TEXT, aircraft TEXT,
         email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'pilot',
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS checkins (
@@ -244,6 +246,7 @@ def init_db():
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS kind TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS hotel_place TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS restaurant_place TEXT")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pilot'")
             cur.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
             cur.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
             conn.commit()
@@ -265,6 +268,10 @@ def init_db():
                 db.execute(f"ALTER TABLE checkins ADD COLUMN {_col} TEXT")
             except sqlite3.OperationalError:
                 pass  # column already exists
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'pilot'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
         db.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
         db.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
         db.commit()
@@ -704,17 +711,20 @@ def register():
         if not name or not email or not password:
             return page("Register", None, register_form(), error="Name, email, and password are required.")
         db = get_db()
+        role = request.form.get("role", "pilot")
+        if role not in ("pilot", "crew"):
+            role = "pilot"
         params = (name, request.form.get("airline", "").strip(), request.form.get("base", "").strip(),
-                  request.form.get("aircraft", "").strip(), email, generate_password_hash(password))
+                  request.form.get("aircraft", "").strip(), email, generate_password_hash(password), role)
         try:
             if USE_POSTGRES:
                 cur = db.execute(
-                    "INSERT INTO users (name, airline, base, aircraft, email, password_hash) "
-                    "VALUES (?,?,?,?,?,?) RETURNING id", params)
+                    "INSERT INTO users (name, airline, base, aircraft, email, password_hash, role) "
+                    "VALUES (?,?,?,?,?,?,?) RETURNING id", params)
                 new_id = cur.fetchone()["id"]
             else:
                 cur = db.execute(
-                    "INSERT INTO users (name, airline, base, aircraft, email, password_hash) VALUES (?,?,?,?,?,?)",
+                    "INSERT INTO users (name, airline, base, aircraft, email, password_hash, role) VALUES (?,?,?,?,?,?,?)",
                     params)
                 new_id = cur.lastrowid
             db.commit()
@@ -726,8 +736,9 @@ def register():
     return page("Register", None, register_form())
 
 def register_form():
-    return """<div class="card"><h2>Create a pilot account</h2><p class="muted">Open to all pilots.</p>
+    return """<div class="card"><h2>Create an account</h2><p class="muted">Open to all pilots and crew.</p>
     <form method="post"><label>Name</label><input name="name" required>
+    <label>Role</label><select name="role"><option value="pilot">Pilot</option><option value="crew">Crew</option></select>
     <label>Airline</label><input name="airline"><label>Base</label><input name="base">
     <label>Aircraft</label><input name="aircraft"><label>Email</label><input type="email" name="email" required>
     <label>Password</label><input type="password" name="password" required>
@@ -807,17 +818,27 @@ def profile():
         clash = db.execute("SELECT id FROM users WHERE email = ? AND id != ?", (email, user["id"])).fetchone()
         if clash:
             return page("My Profile", user, profile_form(user), error="That email is already used by another account.")
-        db.execute("UPDATE users SET name=?, airline=?, base=?, aircraft=?, email=? WHERE id=?",
+        role = request.form.get("role", "pilot")
+        if role not in ("pilot", "crew"):
+            role = "pilot"
+        db.execute("UPDATE users SET name=?, airline=?, base=?, aircraft=?, email=?, role=? WHERE id=?",
                    (name, request.form.get("airline", "").strip(), request.form.get("base", "").strip(),
-                    request.form.get("aircraft", "").strip(), email, user["id"]))
+                    request.form.get("aircraft", "").strip(), email, role, user["id"]))
         db.commit()
         user = current_user()
         return page("My Profile", user, profile_form(user), flash="Profile updated.")
     return page("My Profile", user, profile_form(user))
 
+def _role_options(selected):
+    return "".join(
+        f'<option value="{v}"{" selected" if v == selected else ""}>{v.title()}</option>'
+        for v in ("pilot", "crew"))
+
 def profile_form(user):
+    role = user["role"] if user["role"] in ("pilot", "crew") else "pilot"
     return f"""<div class="card"><h2>My Profile</h2>
     <form method="post"><label>Name</label><input name="name" value="{esc(user['name'])}" required>
+    <label>Role</label><select name="role">{_role_options(role)}</select>
     <label>Airline</label><input name="airline" value="{esc(user['airline'])}">
     <label>Base</label><input name="base" value="{esc(user['base'])}">
     <label>Aircraft</label><input name="aircraft" value="{esc(user['aircraft'])}">
@@ -1497,7 +1518,7 @@ def friends():
             nearby = f' — checked in: {checkin_label(fc)}'
         else:
             nearby = ' — no active check-in'
-        items += (f"<li>{esc(fr['name'])} ({esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
+        items += (f"<li>{esc(fr['name'])} ({esc(fr['role'] or 'pilot').title()} · {esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
                   f' <form method="post" style="display:inline;margin-left:8px">'
                   f'<input type="hidden" name="remove_id" value="{fr["id"]}">'
                   f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px">Remove</button>'
@@ -1512,7 +1533,7 @@ def friends():
                     f'<button type="submit">Add friend</button></form>')
         if duplicates:
             dup_items = "".join(
-                f"<li>{esc(m['name'])} ({esc(m['airline'])} · {esc(m['base'])} · {esc(m['aircraft'])})"
+                f"<li>{esc(m['name'])} ({esc(m['role'] or 'pilot').title()} · {esc(m['airline'])} · {esc(m['base'])} · {esc(m['aircraft'])})"
                 f' <form method="post" style="display:inline;margin-left:8px">'
                 f'<input type="hidden" name="pilot_id" value="{m["id"]}">'
                 f'<button type="submit" style="width:auto;padding:4px 10px">Send request</button>'
