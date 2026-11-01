@@ -116,6 +116,13 @@ tables are created automatically on first boot.
 | `DATABASE_URL` | No | Postgres connection string. When set, the app uses Postgres; when unset, it uses SQLite at `DATABASE_PATH`. Set automatically by the Render Blueprint (`render.yaml`). |
 | `DATABASE_PATH` | No | Path to the SQLite file (only used when `DATABASE_URL` is unset). Defaults to `pilots.db` next to `app.py`. |
 | `PORT` | No (hosting sets it) | Port to listen on. Defaults to 5000. |
+| `SMTP_HOST` | No | SMTP server for friend-request email notifications (e.g. `smtp.gmail.com`). When unset, no emails are sent. |
+| `SMTP_PORT` | No | SMTP port. Defaults to 587. |
+| `SMTP_USERNAME` | No | SMTP login username. |
+| `SMTP_PASSWORD` | No | SMTP login password (use an app-specific password for Gmail/Yahoo). |
+| `SMTP_FROM` | No | From address for notification emails. Defaults to `SMTP_USERNAME`. |
+
+When someone sends a friend request, the recipient gets an email with a link to approve or decline it. Set the `SMTP_*` variables in the Render dashboard (Service → Environment) for the live site.
 
 ## Known limitations
 

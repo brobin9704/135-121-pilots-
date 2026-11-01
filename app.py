@@ -1366,6 +1366,34 @@ def _add_friendship(db, a, b):
     else:
         db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (a, b))
         db.execute("INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?,?)", (b, a))
+def send_email(to_addr, subject, body):
+    """Send a plain-text email via SMTP if configured. Never raises.
+    Configure with env vars: SMTP_HOST, SMTP_PORT (default 587), SMTP_USERNAME,
+    SMTP_PASSWORD, SMTP_FROM."""
+    host = os.environ.get("SMTP_HOST", "").strip()
+    if not host or not to_addr:
+        return False
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        port = int(os.environ.get("SMTP_PORT", "587") or 587)
+        username = os.environ.get("SMTP_USERNAME", "")
+        password = os.environ.get("SMTP_PASSWORD", "")
+        from_addr = os.environ.get("SMTP_FROM", "") or username
+        msg = MIMEText(body)
+        msg["Subject"] = subject
+        msg["From"] = from_addr
+        msg["To"] = to_addr
+        with smtplib.SMTP(host, port, timeout=20) as s:
+            s.starttls()
+            if username:
+                s.login(username, password)
+            s.sendmail(from_addr, [to_addr], msg.as_string())
+        return True
+    except Exception:
+        return False
+
+
 @app.route("/friends", methods=["GET", "POST"])
 @login_required
 def friends():
@@ -1410,6 +1438,14 @@ def friends():
                                (user["id"], fid))
                     db.commit()
                     flash = f"Friend request sent to {esc(new[0]['name'])}. They need to approve it."
+                    to_user = db.execute("SELECT email, name FROM users WHERE id=?", (fid,)).fetchone()
+                    if to_user:
+                        login_url = request.host_url.rstrip("/") + url_for("friends")
+                        send_email(to_user["email"],
+                                   "New friend request on Pilots and Crew Community",
+                                   f"Hi {to_user['name']},\n\n{user['name']} sent you a friend request "
+                                   f"on Pilots and Crew Community.\n\nLog in at {login_url} "
+                                   f"to approve or decline it.\n")
             elif len(new) > 1:
                 detail = ", ".join(f"{esc(m['name'])} ({esc(m['airline'])} · {esc(m['base'])})" for m in new)
                 error = f"More than one pilot is named '{esc(pilot_name)}': {detail}."
