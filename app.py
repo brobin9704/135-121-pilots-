@@ -756,6 +756,156 @@ def login():
         return login_page(error="Email or password did not match.")
     return login_page()
 
+ATC_AUDIO_JS = """
+(function(){
+  var KEY='atc_audio';
+  var enabled=false;
+  try{ enabled=(localStorage.getItem(KEY)||'on')==='on'; }catch(_){ enabled=true; }
+  var HAS_TTS=('speechSynthesis' in window);
+  var btn=document.getElementById('atc_toggle');
+  var hint=document.getElementById('atc_hint');
+  function paint(){ if(btn) btn.textContent=enabled?'\\uD83D\\uDCFB ATC on':'\\uD83D\\uDCFB ATC off'; }
+  function showHint(s){ if(hint) hint.style.display=s?'block':'none'; }
+  if(btn) btn.addEventListener('click',function(e){
+    e.stopPropagation();
+    enabled=!enabled;
+    try{ localStorage.setItem(KEY,enabled?'on':'off'); }catch(_){}
+    paint();
+    if(enabled){ boot(); } else { stop(); showHint(false); }
+  });
+  paint();
+
+  var PHRASES=[
+    "American twelve thirty four, D F W tower, runway one seven center, cleared for takeoff.",
+    "Cleared for takeoff, runway one seven center, American twelve thirty four.",
+    "Delta four fifty six, contact departure, one two four point three.",
+    "One two four point three, Delta four fifty six.",
+    "Southwest seven eighty nine, taxi to runway two six via alpha, hold short of bravo.",
+    "Taxi to two six via alpha, hold short of bravo, Southwest seven eighty nine.",
+    "United two twenty, D F W approach, descend and maintain three thousand.",
+    "Down to three thousand, United two twenty.",
+    "FedEx nine oh four heavy, turn left heading two seven zero, cleared I L S runway one eight left.",
+    "Left two seven zero, cleared I L S one eight left, FedEx nine oh four heavy.",
+    "American sixty seven, wind two four zero at one two, runway one seven right, cleared to land.",
+    "Cleared to land, one seven right, American sixty seven.",
+    "JetBlue eleven twelve, traffic, Boeing seven thirty seven, two o'clock, five miles, same altitude.",
+    "Looking for traffic, JetBlue eleven twelve.",
+    "Alaska three forty one, climb and maintain flight level two three zero.",
+    "Up to two three zero, Alaska three forty one.",
+    "Spirit nine fifteen, D F W ground, runway one seven left at kilo, line up and wait.",
+    "Line up and wait, one seven left at kilo, Spirit nine fifteen.",
+    "Endeavor fifty five twenty three, contact tower one two six point five five.",
+    "One two six point five five, Endeavor fifty five twenty three.",
+    "Delta one ninety eight, reduce speed to one eight zero knots.",
+    "One eight zero knots, Delta one ninety eight.",
+    "American fourteen oh five, taxi to the gate via mike, monitor ground point niner.",
+    "To the gate via mike, American fourteen oh five.",
+    "Southwest thirty two, wind calm, runway two six, cleared for takeoff.",
+    "Cleared for takeoff, two six, Southwest thirty two."
+  ];
+
+  var AC=null, started=false, timer=null, speaking=false, voice=null;
+
+  function pickVoice(){
+    try{
+      var vs=speechSynthesis.getVoices().filter(function(v){return v.lang&&v.lang.toLowerCase().indexOf('en')===0;});
+      if(vs.length) voice=vs[Math.floor(Math.random()*vs.length)];
+    }catch(_){}
+  }
+  if(HAS_TTS){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
+
+  function noiseBuffer(dur){
+    var b=AC.createBuffer(1,Math.max(1,Math.floor(AC.sampleRate*dur)),AC.sampleRate);
+    var d=b.getChannelData(0);
+    for(var i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+    return b;
+  }
+  function squelch(){
+    if(!AC) return;
+    try{
+      var src=AC.createBufferSource(); src.buffer=noiseBuffer(0.12);
+      var f=AC.createBiquadFilter(); f.type='bandpass'; f.frequency.value=2400; f.Q.value=1.2;
+      var g=AC.createGain(); g.gain.value=0.22;
+      src.connect(f); f.connect(g); g.connect(AC.destination); src.start();
+    }catch(_){}
+  }
+  function staticBed(dur){
+    if(!AC) return;
+    try{
+      var src=AC.createBufferSource(); src.buffer=noiseBuffer(dur); src.loop=true;
+      var f=AC.createBiquadFilter(); f.type='bandpass'; f.frequency.value=1800; f.Q.value=0.6;
+      var g=AC.createGain(); g.gain.value=0.014;
+      src.connect(f); f.connect(g); g.connect(AC.destination);
+      src.start(); src.stop(AC.currentTime+dur);
+    }catch(_){}
+  }
+
+  function say(text){
+    return new Promise(function(res){
+      var done=false;
+      function fin(){ if(!done){ done=true; res(); } }
+      if(!HAS_TTS){ fin(); return; }
+      try{
+        speechSynthesis.cancel();
+        var u=new SpeechSynthesisUtterance(text);
+        if(voice) u.voice=voice;
+        u.rate=1.02+Math.random()*0.12;
+        u.pitch=0.72+Math.random()*0.28;
+        u.volume=0.9;
+        u.onend=fin; u.onerror=fin;
+        setTimeout(fin,15000);
+        speaking=true;
+        squelch();
+        setTimeout(function(){ staticBed(Math.min(20,2+text.length*0.09)); speechSynthesis.speak(u); },140);
+      }catch(_){ fin(); }
+    });
+  }
+
+  function loop(){
+    timer=null;
+    if(!enabled||!started||document.hidden){ return; }
+    var text=PHRASES[Math.floor(Math.random()*PHRASES.length)];
+    say(text).then(function(){
+      speaking=false;
+      if(!enabled||!started) return;
+      timer=setTimeout(loop,4000+Math.random()*8000);
+    });
+  }
+
+  function boot(){
+    if(!HAS_TTS||!enabled){ showHint(false); return; }
+    if(!AC){
+      try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(_){ AC=null; }
+    }
+    if(AC&&AC.state==='suspended'){ AC.resume().catch(function(){}); }
+    showHint(false);
+    if(!started){ started=true; }
+    if(!speaking&&!timer){ loop(); }
+  }
+  function stop(){
+    if(timer){ clearTimeout(timer); timer=null; }
+    try{ if(HAS_TTS) speechSynthesis.cancel(); }catch(_){}
+    speaking=false;
+  }
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden){ stop(); }
+    else if(enabled&&started&&!speaking&&!timer){ loop(); }
+  });
+  function arm(e){
+    if(e&&e.target&&e.target.closest&&e.target.closest('#atc_toggle')) return;
+    document.removeEventListener('pointerdown',arm);
+    document.removeEventListener('keydown',arm);
+    if(enabled) boot(); else showHint(false);
+  }
+  document.addEventListener('pointerdown',arm);
+  document.addEventListener('keydown',arm);
+  if(enabled&&HAS_TTS){ showHint(true); } else { showHint(false); }
+})();
+
+"""
+
+ATC_AUDIO_HTML = """<button type="button" id="atc_toggle" class="atc_toggle">📻 ATC on</button><div id="atc_hint" class="atc_hint">Tap anywhere for ATC radio audio</div>"""
+
 def login_page(error=None):
     """Full-bleed photo login page. Standalone document, not wrapped in page()."""
     err = f'<div class="error">{error}</div>' if error else ""
@@ -779,6 +929,11 @@ def login_page(error=None):
       .reg{{text-align:center;margin:14px 0 0;font-size:14px;color:#cbd5e1}}
       .reg a{{color:#7dd3fc}}
       .error{{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:0 0 14px}}
+      .atc_toggle{{position:fixed;top:12px;right:12px;z-index:5;width:auto;background:rgba(13,20,38,.7);
+        border:1px solid rgba(148,163,184,.35);color:#bae6fd;border-radius:999px;padding:8px 14px;
+        font-size:13px;font-weight:600;cursor:pointer}}
+      .atc_hint{{position:fixed;bottom:14px;left:0;right:0;z-index:5;text-align:center;color:#cbd5e1;
+        font-size:13px;opacity:.85;pointer-events:none;text-shadow:0 1px 6px #000;display:none}}
       </style></head><body><div class="bg"></div><div class="scrim"></div>
       <div class="card"><h1>Pilots and Crew Community</h1>
       <p class="tag">The Pilots and Crew Community App is where pilots share real layover intel. Check in at your overnight, leave your honest opinion of the hotels and restaurants nearby, and read what other pilots thought before you book, eat, or sleep.</p>
@@ -787,6 +942,7 @@ def login_page(error=None):
       <label>Password</label><input type="password" name="password" required autocomplete="current-password">
       <button type="submit">Log in</button></form>
       <p class="reg">No account yet? <a href="/register">Register</a></p></div>
+      {ATC_AUDIO_HTML}<script>{ATC_AUDIO_JS}</script>
       </body></html>""")
 
 @app.route("/logout")
