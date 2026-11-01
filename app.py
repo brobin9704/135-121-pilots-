@@ -1394,6 +1394,40 @@ def send_email(to_addr, subject, body):
         return False
 
 
+def _request_friend(db, user, fid, friend_ids):
+    """Send a friend request to fid (or approve the reverse one). Returns (flash, error)."""
+    target = db.execute("SELECT id, name FROM users WHERE id=?", (fid,)).fetchone()
+    if not target or fid == user["id"]:
+        return None, "Pilot not found."
+    if fid in friend_ids:
+        return None, f"'{esc(target['name'])}' is already your friend."
+    reverse = db.execute("SELECT id FROM friend_requests WHERE from_user_id=? AND to_user_id=?",
+                         (fid, user["id"])).fetchone()
+    outgoing = db.execute("SELECT id FROM friend_requests WHERE from_user_id=? AND to_user_id=?",
+                          (user["id"], fid)).fetchone()
+    if reverse:
+        # They already asked you — adding them back approves it.
+        _add_friendship(db, user["id"], fid)
+        db.execute("DELETE FROM friend_requests WHERE id=?", (reverse["id"],))
+        db.commit()
+        friend_ids.add(fid)
+        return f"You are now friends with {esc(target['name'])}.", None
+    if outgoing:
+        return None, f"You already sent {esc(target['name'])} a request."
+    db.execute("INSERT INTO friend_requests (from_user_id, to_user_id) VALUES (?,?)",
+               (user["id"], fid))
+    db.commit()
+    to_user = db.execute("SELECT email, name FROM users WHERE id=?", (fid,)).fetchone()
+    if to_user:
+        login_url = request.host_url.rstrip("/") + url_for("friends")
+        send_email(to_user["email"],
+                   "New friend request on Pilots and Crew Community",
+                   f"Hi {to_user['name']},\n\n{user['name']} sent you a friend request "
+                   f"on Pilots and Crew Community.\n\nLog in at {login_url} "
+                   f"to approve or decline it.\n")
+    return f"Friend request sent to {esc(target['name'])}. They need to approve it.", None
+
+
 @app.route("/friends", methods=["GET", "POST"])
 @login_required
 def friends():
@@ -1401,6 +1435,7 @@ def friends():
     db = get_db()
     flash = None
     error = None
+    duplicates = []
     friend_ids = {r["friend_id"] for r in db.execute(
         "SELECT friend_id FROM friends WHERE user_id=?", (user["id"],)).fetchall()}
     if request.method == "POST":
@@ -1412,43 +1447,20 @@ def friends():
             db.commit()
             friend_ids.discard(rid)
             flash = "Friend removed."
+        pilot_id = request.form.get("pilot_id", "").strip()
         pilot_name = request.form.get("pilot_name", "").strip()
-        if pilot_name:
+        if pilot_id.isdigit():
+            # Chosen from the duplicate-name list.
+            flash, error = _request_friend(db, user, int(pilot_id), friend_ids)
+        elif pilot_name:
             want = pilot_name.lower()
             named = [u for u in db.execute("SELECT * FROM users WHERE id != ?", (user["id"],)).fetchall()
                      if (u["name"] or "").strip().lower() == want]
             new = [u for u in named if u["id"] not in friend_ids]
             if len(new) == 1:
-                fid = new[0]["id"]
-                reverse = db.execute("SELECT id FROM friend_requests WHERE from_user_id=? AND to_user_id=?",
-                                     (fid, user["id"])).fetchone()
-                outgoing = db.execute("SELECT id FROM friend_requests WHERE from_user_id=? AND to_user_id=?",
-                                      (user["id"], fid)).fetchone()
-                if reverse:
-                    # They already asked you — adding them back approves it.
-                    _add_friendship(db, user["id"], fid)
-                    db.execute("DELETE FROM friend_requests WHERE id=?", (reverse["id"],))
-                    db.commit()
-                    friend_ids.add(fid)
-                    flash = f"You are now friends with {esc(new[0]['name'])}."
-                elif outgoing:
-                    error = f"You already sent {esc(new[0]['name'])} a request."
-                else:
-                    db.execute("INSERT INTO friend_requests (from_user_id, to_user_id) VALUES (?,?)",
-                               (user["id"], fid))
-                    db.commit()
-                    flash = f"Friend request sent to {esc(new[0]['name'])}. They need to approve it."
-                    to_user = db.execute("SELECT email, name FROM users WHERE id=?", (fid,)).fetchone()
-                    if to_user:
-                        login_url = request.host_url.rstrip("/") + url_for("friends")
-                        send_email(to_user["email"],
-                                   "New friend request on Pilots and Crew Community",
-                                   f"Hi {to_user['name']},\n\n{user['name']} sent you a friend request "
-                                   f"on Pilots and Crew Community.\n\nLog in at {login_url} "
-                                   f"to approve or decline it.\n")
+                flash, error = _request_friend(db, user, new[0]["id"], friend_ids)
             elif len(new) > 1:
-                detail = ", ".join(f"{esc(m['name'])} ({esc(m['airline'])} · {esc(m['base'])})" for m in new)
-                error = f"More than one pilot is named '{esc(pilot_name)}': {detail}."
+                duplicates = new
             elif named:
                 error = f"'{esc(pilot_name)}' is already your friend."
             else:
@@ -1497,7 +1509,17 @@ def friends():
         add_card = (f'<div class="card"><h2>Add a friend</h2><form method="post">'
                     f"<label>Pilot's name (as on their account)</label>"
                     f'<input name="pilot_name" placeholder="Jane Doe" autocomplete="off" required>'
-                    f'<button type="submit">Add friend</button></form></div>')
+                    f'<button type="submit">Add friend</button></form>')
+        if duplicates:
+            dup_items = "".join(
+                f"<li>{esc(m['name'])} ({esc(m['airline'])} · {esc(m['base'])} · {esc(m['aircraft'])})"
+                f' <form method="post" style="display:inline;margin-left:8px">'
+                f'<input type="hidden" name="pilot_id" value="{m["id"]}">'
+                f'<button type="submit" style="width:auto;padding:4px 10px">Send request</button>'
+                f"</form></li>" for m in duplicates)
+            add_card += (f'<p class="muted">More than one pilot has that name — pick the right one:</p>'
+                         f'<ul>{dup_items}</ul>')
+        add_card += '</div>'
     else:
         add_card = ('<div class="card"><h2>Add a friend</h2>'
                     '<p class="muted">No more pilots to add — everyone here is already your friend.</p></div>')
