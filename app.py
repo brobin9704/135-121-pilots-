@@ -868,7 +868,7 @@ ATC_AUDIO_JS = """
     say(text).then(function(){
       speaking=false;
       if(!enabled||!started) return;
-      timer=setTimeout(loop,4000+Math.random()*8000);
+      timer=setTimeout(loop,2000);
     });
   }
 
