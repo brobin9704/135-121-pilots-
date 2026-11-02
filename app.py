@@ -726,6 +726,10 @@ def review_card(r, user):
 def saved_reviews_section(kind, user, q, scope):
     in_results, all_results, checkin = search_saved_reviews(kind, q, scope, user)
     label = "hotel" if kind == "hotel" else "restaurant"
+    if not checkin:
+        return (f'<div class="card"><h2>Saved pilot {label} reviews</h2>'
+                f'<p class="muted">Check in on the <a href="{url_for("board")}">Check-In</a> '
+                f'page to see saved reviews.</p></div>')
     other_count = 0
     hint = ""
     if scope == "in" and checkin and not in_results and all_results:
