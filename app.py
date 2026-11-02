@@ -517,6 +517,7 @@ nav a,.btn{background:#1e293b;color:#e2e8f0;text-decoration:none;padding:10px 14
 nav a.active{background:#0369a1}
 .topbar{display:flex;align-items:center;gap:10px;padding:12px 4px}
 .brand{font-weight:800;letter-spacing:.5px;font-size:15px}
+.logout_link{margin-left:auto;color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:6px 12px}
 .has_bnav .wrap{padding-bottom:96px}
 .bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1626;border-top:1px solid #334155;padding:8px 4px calc(10px + env(safe-area-inset-bottom))}
 .bnav a{flex:1;text-align:center;color:#8fa0b8;text-decoration:none;font-size:10px}
@@ -650,7 +651,8 @@ def page(title, user, body, flash=None, error=None):
     chrome, after, bcls = "", "", ""
     if user:
         bcls = "has_bnav"
-        chrome = '<div class="topbar"><span class="brand">✈ PILOTS &amp; CREW</span></div>'
+        logout = f'<a href="{url_for("logout")}" class="logout_link">Log out</a>' if title == "Home" else ""
+        chrome = f'<div class="topbar"><span class="brand">✈ PILOTS &amp; CREW</span>{logout}</div>'
         items = [("Home", url_for("index"), "🏠"), ("Hotels", url_for("hotels"), "🛏"),
                  ("Restaurants", url_for("restaurants"), "🍽"), ("Friends", url_for("friends"), "👥"),
                  ("Profile", url_for("profile"), "👤")]
@@ -1048,8 +1050,7 @@ def profile_form(user):
     <form method="post"><input type="hidden" name="form" value="password">
     <label>Current password</label><input type="password" name="current_password" required autocomplete="current-password">
     <label>New password (at least 8 characters)</label><input type="password" name="new_password" required autocomplete="new-password">
-    <button type="submit">Change password</button></form></div>
-    <div class="card"><a href="/logout" class="btn" style="text-align:center;display:block">Log out</a></div>"""
+    <button type="submit">Change password</button></form></div>"""
 
 @app.route("/")
 @login_required
