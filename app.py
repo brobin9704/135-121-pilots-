@@ -444,7 +444,7 @@ def overpass_query(lat, lon, radius_miles, amenity_filter):
 
 def nominatim_fallback(lat, lon, radius_miles, kind, city):
     """Fallback when Overpass is busy: search by place type near the city, then filter by distance."""
-    term = "hotels" if kind == "hotel" else "restaurants"
+    term = {"hotel": "hotels", "restaurant": "restaurants"}.get(kind, "attractions")
     params = urllib.parse.urlencode({
         "q": f"{term} near {city}", "format": "json", "limit": 50, "extratags": 1, "addressdetails": 1,
     })
@@ -471,6 +471,7 @@ def nominatim_fallback(lat, lon, radius_miles, kind, city):
             "phone": extra.get("phone") or extra.get("contact:phone") or "",
             "website": extra.get("website") or extra.get("contact:website") or "",
             "cuisine": extra.get("cuisine", ""), "hours": extra.get("opening_hours", ""),
+            "atype": r.get("type", ""),
             "distance": round(dist, 1),
         })
     out.sort(key=lambda x: x["distance"])
@@ -480,8 +481,10 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
     """Real OpenStreetMap results around a coordinate pair."""
     if kind == "hotel":
         filt = 'tourism~"hotel|motel|guest_house|hostel"'
-    else:
+    elif kind == "restaurant":
         filt = 'amenity~"restaurant|cafe|fast_food"'
+    else:
+        filt = 'tourism~"attraction|museum|gallery|zoo|aquarium|theme_park|viewpoint|artwork"'
     centre = (lat, lon, display or f"{lat:.4f}, {lon:.4f}")
     try:
         elements = overpass_query(lat, lon, radius_miles, filt)
@@ -518,6 +521,7 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
             "website": tags.get("website") or tags.get("contact:website") or "",
             "cuisine": tags.get("cuisine", ""),
             "hours": tags.get("opening_hours", ""),
+            "atype": tags.get("tourism", ""),
             "distance": round(dist, 1),
         })
     results.sort(key=lambda r: r["distance"])
@@ -696,8 +700,8 @@ def page(title, user, body, flash=None, error=None):
                   f'var g=h<12?"Good morning":h<18?"Good afternoon":"Good evening";'
                   f'document.getElementById("greet").textContent=g+", "+{first_js};}})();</script>')
         items = [("Home", url_for("index"), "🏠"), ("Hotels", url_for("hotels"), "🛏"),
-                 ("Restaurants", url_for("restaurants"), "🍽"), ("Friends", url_for("friends"), "👥"),
-                 ("Profile", url_for("profile"), "👤")]
+                 ("Restaurants", url_for("restaurants"), "🍽"), ("Attractions", url_for("attractions"), "🎡"),
+                 ("Friends", url_for("friends"), "👥"), ("Profile", url_for("profile"), "👤")]
         bnav = "".join(
             f'<a href="{u}" class="{"on" if (t == title or (t == "Profile" and title == "My Profile")) else ""}">'
             f'<span class="e">{e}</span>{t}</a>' for t, u, e in items)
@@ -1669,8 +1673,8 @@ def at_location_section(kind, user, radius_options, default_radius):
         radius = int(radius_raw)
     except ValueError:
         radius = default_radius
-    # Hotels: 2/5/10. Restaurants: 5/10/20, default 20, capped at 20.
-    if kind == "restaurant":
+    # Hotels: 2/5/10, capped at 10. Restaurants and attractions: 5/10/20, capped at 20.
+    if kind in ("restaurant", "attraction"):
         radius_options = [5, 10, 20]
         radius = max(1, min(radius, 20))
     else:
@@ -1768,26 +1772,48 @@ def external_results_html(kind, data, user):
         detail = ""
         if kind == "hotel":
             detail = f"<div>Brand: {esc(r['brand'] or r['name'])}</div>"
-        else:
+        elif kind == "restaurant":
             detail = f"<div>Cuisine: {esc(r['cuisine'])}</div><div>Hours: {esc(r['hours'])}</div>"
+        elif r.get("atype"):
+            detail = f"<div>Type: {esc(r['atype'])}</div>"
         web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
-        add = (url_for("new_review") + "?" + urllib.parse.urlencode(
-            {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"],
-             "phone": r["phone"] or "", "address": r["address"] or "",
-             "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
-        checkin_btn = ""
-        if place["airport_code"]:
-            checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px" onsubmit="return confirm(\'Check in here?\')">'
-                f'<input type="hidden" name="action" value="checkin">'
-                f'<input type="hidden" name="airport_code" value="{esc(place["airport_code"])}">'
-                f'<input type="hidden" name="city" value="{esc(place["city"])}">'
-                f'<input type="hidden" name="place_name" value="{esc(r["name"])}">'
-                f'<input type="hidden" name="kind" value="{kind}">'
-                f'<button type="submit" style="width:auto;padding:6px 12px">Check in</button></form>')
-        cards += f"""<div class="card"><a href="{add}"><strong>{esc(r['name'])}</strong></a> <span class="muted">{r['distance']} mi</span>
+        if kind == "attraction":
+            # No reviews or check-ins for attractions — link the name to an OSM search.
+            loc_url = ("https://www.openstreetmap.org/search?" + urllib.parse.urlencode(
+                {"query": f"{r['name']}, {place['city']}"}))
+            name_html = (f'<a href="{loc_url}" target="_blank" rel="noopener">'
+                         f'<strong>{esc(r["name"])}</strong></a>')
+            action_html = ""
+        else:
+            add = (url_for("new_review") + "?" + urllib.parse.urlencode(
+                {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"],
+                 "phone": r["phone"] or "", "address": r["address"] or "",
+                 "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
+            checkin_btn = ""
+            if place["airport_code"]:
+                checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px" onsubmit="return confirm(\'Check in here?\')">'
+                    f'<input type="hidden" name="action" value="checkin">'
+                    f'<input type="hidden" name="airport_code" value="{esc(place["airport_code"])}">'
+                    f'<input type="hidden" name="city" value="{esc(place["city"])}">'
+                    f'<input type="hidden" name="place_name" value="{esc(r["name"])}">'
+                    f'<input type="hidden" name="kind" value="{kind}">'
+                    f'<button type="submit" style="width:auto;padding:6px 12px">Check in</button></form>')
+            name_html = f'<a href="{add}"><strong>{esc(r["name"])}</strong></a>'
+            action_html = f'<p><a href="{add}">Add review</a></p>{checkin_btn}'
+        cards += f"""<div class="card">{name_html} <span class="muted">{r['distance']} mi</span>
           {detail}<div>Address: {esc(r['address'])}</div><div>Phone: {esc(r['phone'])}</div>{web}
-          <p><a href="{add}">Add review</a></p>{checkin_btn}</div>"""
+          {action_html}</div>"""
     return header + cards
+
+@app.route("/attractions", methods=["GET", "POST"])
+@login_required
+def attractions():
+    user = current_user()
+    card, data, _ = at_location_section("attraction", user, [5, 10, 20], 10)
+    ext = external_results_html("attraction", data, user) if data else ""
+    body = card + ext
+    return page("Attractions", user, body)
+
 
 @app.route("/airport/<code>")
 @login_required
