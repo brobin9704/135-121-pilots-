@@ -652,9 +652,15 @@ def page(title, user, body, flash=None, error=None):
     err = f'<div class="error">{error}</div>' if error else ""
     chrome, after, bcls = "", "", ""
     if user:
+        import json as _json
         bcls = "has_bnav"
+        first = esc(user["name"].split()[0]) if user["name"] else ""
+        first_js = _json.dumps(first)
         logout = f'<a href="{url_for("logout")}" class="logout_link">Log out</a>' if title == "Home" else ""
-        chrome = f'<div class="topbar"><span class="brand">✈ PILOTS &amp; CREW</span>{logout}</div>'
+        chrome = (f'<div class="topbar"><span class="brand" id="greet">Hello, {first}</span>{logout}</div>'
+                  f'<script>(function(){{var h=new Date().getHours();'
+                  f'var g=h<12?"Good morning":h<18?"Good afternoon":"Good evening";'
+                  f'document.getElementById("greet").textContent=g+", "+{first_js};}})();</script>')
         items = [("Home", url_for("index"), "🏠"), ("Hotels", url_for("hotels"), "🛏"),
                  ("Restaurants", url_for("restaurants"), "🍽"), ("Friends", url_for("friends"), "👥"),
                  ("Profile", url_for("profile"), "👤")]
