@@ -1216,6 +1216,11 @@ def board():
         db.execute("UPDATE checkins SET checked_out = 1 WHERE user_id = ? AND checked_out = 0", (user["id"],))
         db.commit()
         flash = "Checked out."
+    if request.method == "POST" and request.form.get("action") == "delete_checkin":
+        db.execute("DELETE FROM checkins WHERE id=? AND user_id=?",
+                   (request.form.get("checkin_id"), user["id"]))
+        db.commit()
+        flash = "Check-in removed."
     checkin = current_checkin(user["id"])
     # Check-in history: everything except the current check-in, newest first.
     all_rows = db.execute(
@@ -1223,7 +1228,11 @@ def board():
     past = [r for r in all_rows if not checkin or r["id"] != checkin["id"]]
     if past:
         items = "".join(
-            f"<li>{checkin_label(r)} <span class='muted'>— {esc(r['start_date'])} to {esc(r['end_date'] or 'open')}</span></li>"
+            f"<li>{checkin_label(r)} <span class='muted'>— {esc(r['start_date'])} to {esc(r['end_date'] or 'open')}</span>"
+            f' <form method="post" style="display:inline" onsubmit="return confirm(\'Remove this check-in?\')">'
+            f'<input type="hidden" name="action" value="delete_checkin">'
+            f'<input type="hidden" name="checkin_id" value="{r["id"]}">'
+            f'<button type="submit" style="width:auto;padding:4px 10px;font-size:13px">Remove</button></form></li>'
             for r in past)
         history_html = f'<div class="card"><h2>Check-in history</h2><ul>{items}</ul></div>'
     else:
