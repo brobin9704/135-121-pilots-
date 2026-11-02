@@ -508,6 +508,12 @@ header{display:flex;justify-content:space-between;align-items:center;gap:12px}
 nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 nav a,.btn{background:#1e293b;color:#e2e8f0;text-decoration:none;padding:10px 14px;border-radius:10px;border:1px solid #334155;display:inline-block}
 nav a.active{background:#0369a1}
+.topbar{display:flex;align-items:center;gap:10px;padding:12px 4px}
+.brand{font-weight:800;letter-spacing:.5px;font-size:15px}
+.profile_ic{margin-left:auto;text-decoration:none;font-size:22px}
+.tabs{display:flex;gap:4px;padding:8px 4px;margin:0 -4px;overflow-x:auto;position:sticky;top:0;z-index:10;background:#0f172a;border-bottom:1px solid #334155}
+.tabs a{font-size:13.5px;padding:8px 13px;border-radius:999px;white-space:nowrap;color:#94a3b8;text-decoration:none}
+.tabs a.on{background:#0284c7;color:#fff;font-weight:700}
 .card{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:16px;margin:12px 0}
 input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;box-sizing:border-box}
 button,.btn-primary{background:#0284c7;color:#fff;border:0;padding:12px 16px;border-radius:10px;font-size:16px;cursor:pointer;width:100%}
@@ -517,26 +523,6 @@ label{font-weight:600}.muted{color:#94a3b8}.stars{color:#facc15;letter-spacing:2
 .thumbs img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid #475569}
 .flash{background:#365314;border:1px solid #65a30d;padding:10px;border-radius:10px;margin:12px 0}
 .error{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:12px 0}
-.appbar{display:flex;align-items:center;gap:12px;padding:10px 0}
-#menu_btn{background:#1e293b;border:1px solid #334155;border-radius:10px;width:44px;height:44px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;flex:none}
-#menu_btn span{display:block;width:20px;height:2px;background:#e2e8f0}
-.appbar_title{font-size:20px;font-weight:800}
-#scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
-#drawer{position:fixed;top:0;left:0;bottom:0;width:240px;background:#1e293b;border-right:1px solid #334155;transform:translateX(-105%);transition:transform .25s ease;z-index:50;padding:14px 0;box-shadow:8px 0 24px rgba(0,0,0,.5);box-sizing:border-box}
-body.menu_open #scrim{opacity:1;pointer-events:auto}
-body.menu_open #drawer{transform:none}
-.drawer_head{padding:2px 16px 10px;font-weight:800;font-size:13px;color:#7dd3fc;letter-spacing:1px}
-#drawer a{display:block;padding:11px 16px;color:#e2e8f0;text-decoration:none;font-size:15px}
-#drawer a.active{background:#0369a1}
-#drawer a.logout{color:#94a3b8}
-#drawer.static{position:static;transform:none;border:1px solid #334155;border-radius:14px}
-.home_layout{display:flex;gap:16px;align-items:flex-start}
-.home_layout #drawer.static{flex:none}
-.home_main{flex:1;min-width:0}
-@media (max-width:640px){.home_layout{flex-direction:column}}
-.home_btn{margin-left:auto;background:#1e293b;border:1px solid #334155;border-radius:10px;width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center}
-.home_menu{max-width:320px}
-.home_menu a{display:block;background:#1e293b;border:1px solid #334155;color:#e2e8f0;text-decoration:none;padding:16px;border-radius:12px;margin:10px 0;font-size:17px;font-weight:700}
 @media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}}
 """
 
@@ -649,23 +635,17 @@ FINDME_JS = """<script>
 })();
 </script>"""
 
-def page(title, user, body, flash=None, error=None, home=False):
+def page(title, user, body, flash=None, error=None):
     chrome = ""
-    if user and not home:
-        links = [("Check-In", url_for("board")), ("Hotels", url_for("hotels")),
-                 ("Restaurants", url_for("restaurants")), ("Friends", url_for("friends")),
-                 ("My Profile", url_for("profile"))]
-        items = "".join(
-            f'<a href="{u}" class="{"active" if t == title else ""}">{t}</a>' for t, u in links)
-        items += f'<a href="{url_for("logout")}" class="logout">Log out ({esc(user["name"])})</a>'
-        chrome = f"""<div class="appbar"><button id="menu_btn" aria-label="Open menu"><span></span><span></span><span></span></button>
-          <span class="appbar_title">{esc(title)}</span>
-          <a href="{url_for('index')}" class="home_btn" aria-label="Home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg></a></div>
-        <div id="scrim"></div><aside id="drawer"><div class="drawer_head">PILOTS AND CREW COMMUNITY</div>{items}</aside>
-        <script>
-        document.getElementById('menu_btn').addEventListener('click',function(){{document.body.classList.add('menu_open')}});
-        document.getElementById('scrim').addEventListener('click',function(){{document.body.classList.remove('menu_open')}});
-        </script>"""
+    if user:
+        tabs = [("Home", url_for("index")), ("Check-In", url_for("board")),
+                ("Hotels", url_for("hotels")), ("Restaurants", url_for("restaurants")),
+                ("Friends", url_for("friends"))]
+        tab_html = "".join(
+            f'<a href="{u}" class="{"on" if t == title else ""}">{t}</a>' for t, u in tabs)
+        chrome = (f'<div class="topbar"><span class="brand">✈ PILOTS &amp; CREW</span>'
+                  f'<a href="{url_for("profile")}" class="profile_ic" aria-label="My Profile">👤</a></div>'
+                  f'<nav class="tabs">{tab_html}</nav>')
     msg = f'<div class="flash">{flash}</div>' if flash else ""
     err = f'<div class="error">{error}</div>' if error else ""
     return render_template_string(f"""<!doctype html><html lang="en"><head>
@@ -1057,27 +1037,20 @@ def profile_form(user):
     <form method="post"><input type="hidden" name="form" value="password">
     <label>Current password</label><input type="password" name="current_password" required autocomplete="current-password">
     <label>New password (at least 8 characters)</label><input type="password" name="new_password" required autocomplete="new-password">
-    <button type="submit">Change password</button></form></div>"""
+    <button type="submit">Change password</button></form></div>
+    <div class="card"><a href="/logout" class="btn" style="text-align:center;display:block">Log out</a></div>"""
 
 @app.route("/")
 @login_required
 def index():
     user = current_user()
     db = get_db()
-    links = [("Check-In", url_for("board")), ("Hotels", url_for("hotels")),
-             ("Restaurants", url_for("restaurants")), ("Friends", url_for("friends")),
-             ("My Profile", url_for("profile"))]
-    items = "".join(f'<a href="{u}">{t}</a>' for t, u in links)
-    items += f'<a href="{url_for("logout")}" class="logout">Log out ({esc(user["name"])})</a>'
-    menu = (f'<aside id="drawer" class="static"><div class="drawer_head">PILOTS AND CREW COMMUNITY</div>'
-            f'{items}</aside>')
     checkin = current_checkin(user["id"])
-    main = (current_checkin_html(checkin)
+    body = (current_checkin_html(checkin)
             + LOCMAP_HTML + LOCMAP_JS
             + friends_nearby_html(db, user, checkin)
             + area_reviews_html(db, user, checkin))
-    body = f'<div class="home_layout">{menu}<div class="home_main">{main}</div></div>'
-    return page("Home", user, body, home=True)
+    return page("Home", user, body)
 
 # ---------------------------------------------------------------- board
 def nearest_airport_for(lat, lon):
