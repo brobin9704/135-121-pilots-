@@ -517,6 +517,7 @@ nav a,.btn{background:#1e293b;color:#e2e8f0;text-decoration:none;padding:10px 14
 nav a.active{background:#0369a1}
 .topbar{display:flex;align-items:center;gap:10px;padding:12px 4px}
 .brand{font-weight:800;letter-spacing:.5px;font-size:15px}
+.appname{text-align:center;font-size:11px;letter-spacing:2px;color:#7dd3fc;font-weight:700;padding:10px 4px 0}
 .logout_link{margin-left:auto;color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:6px 12px}
 .has_bnav .wrap{padding-bottom:96px}
 .bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1626;border-top:1px solid #334155;padding:8px 4px calc(10px + env(safe-area-inset-bottom))}
@@ -657,7 +658,8 @@ def page(title, user, body, flash=None, error=None):
         first = esc(user["name"].split()[0]) if user["name"] else ""
         first_js = _json.dumps(first)
         logout = f'<a href="{url_for("logout")}" class="logout_link">Log out</a>' if title == "Home" else ""
-        chrome = (f'<div class="topbar"><span class="brand" id="greet">Hello, {first}</span>{logout}</div>'
+        chrome = (f'<div class="appname">Pilot &amp; Crew Community</div>'
+                  f'<div class="topbar"><span class="brand" id="greet">Hello, {first}</span>{logout}</div>'
                   f'<script>(function(){{var h=new Date().getHours();'
                   f'var g=h<12?"Good morning":h<18?"Good afternoon":"Good evening";'
                   f'document.getElementById("greet").textContent=g+", "+{first_js};}})();</script>')
