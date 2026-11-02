@@ -1289,6 +1289,14 @@ def nearest_airport():
         return jsonify({"error": "airport data unavailable"}), 503
     return jsonify({"code": code, "city": city, "name": name, "distance_mi": dist})
 
+def _slot_checkout_form(slot, label):
+    """Small inline form that checks the user out of one place (hotel or restaurant)."""
+    return (f'<form method="post" action="{url_for("checkout_place")}" style="display:inline" '
+            f'onsubmit="return confirm(\'Check out of this {label}?\')">'
+            f'<input type="hidden" name="slot" value="{slot}">'
+            f'<button type="submit" style="width:auto;padding:4px 10px">Check out</button></form>')
+
+
 def current_checkin_html(checkin):
     """Card showing the user's active check-in (hotel/restaurant places link to the review form)."""
     if not checkin:
@@ -1300,17 +1308,21 @@ def current_checkin_html(checkin):
         return f'<a href="{url}">{esc(place)}</a>'
     status_lines = []
     if checkin["hotel_place"]:
-        status_lines.append(f"Hotel: {_place_link(checkin['hotel_place'], 'hotel')}")
+        status_lines.append(f"Hotel: {_place_link(checkin['hotel_place'], 'hotel')} "
+                            f"{_slot_checkout_form('hotel', 'hotel')}")
     if checkin["restaurant_place"]:
-        status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')}")
+        status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')} "
+                            f"{_slot_checkout_form('restaurant', 'restaurant')}")
     if not status_lines and checkin["place_name"]:
         # Legacy rows (pre hotel/restaurant split).
-        status_lines.append(_place_link(checkin["place_name"], checkin["kind"] or "hotel"))
+        kind = checkin["kind"] or "hotel"
+        status_lines.append(f"{_place_link(checkin['place_name'], kind)} {_slot_checkout_form(kind, kind)}")
     status_lines.append(f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}')
     status_html = "<br>".join(status_lines)
     return f"""<div class="card"><h2>Current check-in</h2>
       <p><strong>{status_html}</strong></p>
       <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
+      <p><a href="{url_for('edit_checkin')}">Edit check-in</a></p>
       <form method="post" action="{url_for('board')}" onsubmit="return confirm('Check out of this location?')"><input type="hidden" name="action" value="checkout">
       <button type="submit">Check out</button></form></div>"""
 
@@ -1431,6 +1443,68 @@ def board():
       <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
       {friends_nearby_html(db, user, checkin)}{area_reviews_html(db, user, checkin)}{history_html}"""
     return page("Check-In", user, body, flash=flash)
+
+
+@app.route("/checkout/place", methods=["POST"])
+@login_required
+def checkout_place():
+    """Check out of one place (the hotel slot or the restaurant slot) without ending the check-in."""
+    user = current_user()
+    db = get_db()
+    slot = request.form.get("slot")
+    checkin = current_checkin(user["id"])
+    if checkin and slot in ("hotel", "restaurant"):
+        col = "hotel_place" if slot == "hotel" else "restaurant_place"
+        db.execute(f"UPDATE checkins SET {col}=NULL WHERE id=? AND user_id=? AND checked_out=0",
+                   (checkin["id"], user["id"]))
+        # Legacy rows stored the place in place_name/kind instead of the slots.
+        if checkin["place_name"] and (checkin["kind"] or "hotel") == slot:
+            db.execute("UPDATE checkins SET place_name=NULL, kind=NULL "
+                       "WHERE id=? AND user_id=? AND checked_out=0",
+                       (checkin["id"], user["id"]))
+        db.commit()
+        flask_flash(f"Checked out of the {slot}.")
+    return redirect(url_for("index"))
+
+
+@app.route("/checkin/edit", methods=["GET", "POST"])
+@login_required
+def edit_checkin():
+    """Edit the current check-in: airport, city, hotel/restaurant places, dates."""
+    user = current_user()
+    db = get_db()
+    checkin = current_checkin(user["id"])
+    if not checkin:
+        return redirect(url_for("board"))
+    if request.method == "POST":
+        code = request.form.get("airport_code", "").strip().upper()
+        city = request.form.get("city", "").strip()
+        hotel = request.form.get("hotel_place", "").strip() or None
+        restaurant = request.form.get("restaurant_place", "").strip() or None
+        start = request.form.get("start_date") or checkin["start_date"]
+        end = request.form.get("end_date") or None
+        db.execute(
+            "UPDATE checkins SET airport_code=?, city=?, hotel_place=?, restaurant_place=?, "
+            "start_date=?, end_date=? WHERE id=? AND user_id=? AND checked_out=0",
+            (code, city, hotel, restaurant, start, end, checkin["id"], user["id"]))
+        # A new place means old cached search results no longer apply.
+        db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
+                   (user["id"], code, city.strip().lower()))
+        db.commit()
+        flask_flash("Check-in updated.")
+        return redirect(url_for("index"))
+    body = f"""
+      <div class="card"><h2>Edit check-in</h2>
+      <form method="post">
+      <label>Airport code</label><input name="airport_code" value="{esc(checkin['airport_code'] or '')}" required>
+      <label>City</label><input name="city" value="{esc(checkin['city'] or '')}" required>
+      <label>Hotel</label><input name="hotel_place" value="{esc(checkin['hotel_place'] or '')}" placeholder="Hotel (optional)">
+      <label>Restaurant</label><input name="restaurant_place" value="{esc(checkin['restaurant_place'] or '')}" placeholder="Restaurant (optional)">
+      <label>Start date</label><input type="date" name="start_date" value="{esc(checkin['start_date'] or '')}">
+      <label>End date (optional)</label><input type="date" name="end_date" value="{esc(checkin['end_date'] or '')}">
+      <button type="submit">Save changes</button></form>
+      <p><a href="{url_for('index')}">Cancel</a></p></div>"""
+    return page("Edit check-in", user, body)
 
 # ---------------------------------------------------------------- reviews
 def _parse_coord(val):
