@@ -1230,7 +1230,7 @@ def board():
     body = f"""
       <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
-      <form method="post"><input type="hidden" name="action" value="checkin">
+      <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + '?')"><input type="hidden" name="action" value="checkin">
       <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
       <label>City</label><input id="city" name="city" placeholder="Tulsa" required>
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
@@ -1552,7 +1552,7 @@ def external_results_html(kind, data, user):
             {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"]}))
         checkin_btn = ""
         if place["airport_code"]:
-            checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px">'
+            checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px" onsubmit="return confirm(\'Check in here?\')">'
                 f'<input type="hidden" name="action" value="checkin">'
                 f'<input type="hidden" name="airport_code" value="{esc(place["airport_code"])}">'
                 f'<input type="hidden" name="city" value="{esc(place["city"])}">'
