@@ -554,6 +554,7 @@ nav a.active{background:#0369a1}
 .brand{font-weight:800;letter-spacing:.5px;font-size:15px}
 .appname{text-align:center;font-size:11px;letter-spacing:2px;color:#7dd3fc;font-weight:700;padding:10px 4px 0}
 .minimap{height:180px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
+.resultsmap{height:260px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
 .logout_link{margin-left:auto;color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:6px 12px}
 .has_bnav .wrap{padding-bottom:96px}
 .bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1626;border-top:1px solid #334155;padding:8px 4px calc(10px + env(safe-area-inset-bottom))}
@@ -764,15 +765,36 @@ def review_photos_html(review_id):
 MINIMAP_JS = """
 <script>
 (function(){
-  var divs=document.querySelectorAll('.minimap');
-  if(!divs.length)return;
+  var singles=document.querySelectorAll('.minimap');
+  var multis=document.querySelectorAll('.resultsmap');
+  if(!singles.length&&!multis.length)return;
+  function tiles(m){
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(m);
+  }
+  function escHtml(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
   function init(){
-    divs.forEach(function(d){
+    singles.forEach(function(d){
       var lat=parseFloat(d.getAttribute('data-lat')),lon=parseFloat(d.getAttribute('data-lon'));
       if(!isFinite(lat)||!isFinite(lon))return;
       var m=L.map(d,{zoomControl:false}).setView([lat,lon],15);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(m);
+      tiles(m);
       L.marker([lat,lon]).addTo(m);
+      m.scrollWheelZoom.disable();
+      setTimeout(function(){m.invalidateSize();},150);
+    });
+    multis.forEach(function(d){
+      var markers;
+      try{markers=JSON.parse(d.getAttribute('data-markers'));}catch(e){return;}
+      if(!markers||!markers.length)return;
+      var m=L.map(d,{zoomControl:false}).setView([markers[0].lat,markers[0].lon],12);
+      tiles(m);
+      var bounds=[];
+      markers.forEach(function(p){
+        if(!isFinite(p.lat)||!isFinite(p.lon))return;
+        L.marker([p.lat,p.lon]).addTo(m).bindPopup(escHtml(p.name));
+        bounds.push([p.lat,p.lon]);
+      });
+      if(bounds.length>1)m.fitBounds(bounds,{padding:[24,24]});
       m.scrollWheelZoom.disable();
       setTimeout(function(){m.invalidateSize();},150);
     });
@@ -1767,6 +1789,10 @@ def external_results_html(kind, data, user):
         header = f"<h2>{len(results)} {kind}s within {radius} mi</h2>"
     if not results:
         return header + '<p class="muted">No places found in that radius.</p>'
+    markers = [{"lat": r["lat"], "lon": r["lon"], "name": r["name"]} for r in results
+               if r.get("lat") is not None and r.get("lon") is not None]
+    map_html = (f'<div class="resultsmap" data-markers="{esc(json.dumps(markers))}"></div>'
+                if markers else "")
     cards = ""
     for r in results:
         detail = ""
@@ -1803,7 +1829,7 @@ def external_results_html(kind, data, user):
         cards += f"""<div class="card">{name_html} <span class="muted">{r['distance']} mi</span>
           {detail}<div>Address: {esc(r['address'])}</div><div>Phone: {esc(r['phone'])}</div>{web}
           {action_html}</div>"""
-    return header + cards
+    return header + map_html + cards
 
 @app.route("/attractions", methods=["GET", "POST"])
 @login_required
