@@ -138,6 +138,7 @@ SQLITE_SCHEMA = """
         user_id INTEGER NOT NULL REFERENCES users(id),
         kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant')),
         place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
+        phone TEXT, address TEXT,
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
         tags TEXT, notes TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -195,6 +196,7 @@ POSTGRES_SCHEMA = """
         user_id INTEGER NOT NULL REFERENCES users(id),
         kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant')),
         place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
+        phone TEXT, address TEXT,
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
         tags TEXT, notes TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -250,6 +252,8 @@ def init_db():
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS restaurant_place TEXT")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pilot'")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT 'tabs'")
+            cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS phone TEXT")
+            cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS address TEXT")
             cur.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
             cur.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
             conn.commit()
@@ -279,6 +283,11 @@ def init_db():
             db.execute("ALTER TABLE users ADD COLUMN layout TEXT NOT NULL DEFAULT 'tabs'")
         except sqlite3.OperationalError:
             pass  # column already exists
+        for _col in ("phone", "address"):
+            try:
+                db.execute(f"ALTER TABLE reviews ADD COLUMN {_col} TEXT")
+            except sqlite3.OperationalError:
+                pass  # column already exists
         db.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
         db.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
         db.commit()
@@ -349,6 +358,7 @@ def search_saved_reviews(kind, query, scope, user):
             return True
         hay = " ".join([
             row["place_name"] or "", row["airport_code"] or "", row["city"] or "",
+            row["phone"] or "", row["address"] or "",
             row["notes"] or "", row["tags"] or "", row["author"] or "",
         ]).lower()
         return all(w in hay for w in words)
@@ -727,9 +737,14 @@ def review_card(r, user):
     loc_query = ", ".join(p for p in [r["place_name"] or "", r["city"] or ""] if p)
     loc_url = "https://www.openstreetmap.org/search?" + urllib.parse.urlencode({"query": loc_query})
     photos = review_photos_html(r["id"])
+    contact = ""
+    if r["address"]:
+        contact += f'<div>{esc(r["address"])}</div>'
+    if r["phone"]:
+        contact += f'<div><a href="tel:{esc(r["phone"])}">{esc(r["phone"])}</a></div>'
     return f"""<div class="card"><a href="{loc_url}" target="_blank" rel="noopener"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>
       <div class="muted">{esc(r['airport_code'])} · {esc(r['city'])} · by {esc(r['author'])}</div>
-      <div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{own}</div>"""
+      {contact}<div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{own}</div>"""
 
 def saved_reviews_section(kind, user, q, scope):
     in_results, all_results, checkin = search_saved_reviews(kind, q, scope, user)
@@ -758,7 +773,7 @@ def saved_reviews_section(kind, user, q, scope):
       <input type="text" name="q" value="{esc(q)}" placeholder="Place, airport code, city, notes, or tag">
       <input type="hidden" name="scope" value="{esc(scope)}">
       <button type="submit">Search</button></form>
-      <p class="muted">Searches pilot reviews saved in this app — place name, airport code, city, notes, and tags. Every word must match somewhere.</p>
+      <p class="muted">Searches pilot reviews saved in this app — place name, airport code, city, phone, address, notes, and tags. Every word must match somewhere.</p>
       {scope_links}</div>{hint}{cards}"""
 
 # ---------------------------------------------------------------- auth
@@ -1264,16 +1279,17 @@ def new_review():
         db = get_db()
         params = (user["id"], kind, request.form.get("place_name", "").strip(),
                   request.form.get("airport_code", "").strip().upper(), request.form.get("city", "").strip(),
+                  request.form.get("phone", "").strip(), request.form.get("address", "").strip(),
                   int(request.form.get("rating", 5)), tags, request.form.get("notes", "").strip())
         if USE_POSTGRES:
             cur = db.execute(
-                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, rating, tags, notes) "
-                "VALUES (?,?,?,?,?,?,?,?) RETURNING id", params)
+                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, rating, tags, notes) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id", params)
             review_id = cur.fetchone()["id"]
         else:
             cur = db.execute(
-                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, rating, tags, notes) "
-                "VALUES (?,?,?,?,?,?,?,?)", params)
+                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, rating, tags, notes) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)", params)
             review_id = cur.lastrowid
         _save_review_photos(db, review_id, request.files.getlist("photos"))
         db.commit()
@@ -1282,6 +1298,8 @@ def new_review():
     place = request.args.get("place", "")
     airport = request.args.get("airport", checkin["airport_code"] if checkin else "")
     city = request.args.get("city", checkin["city"] if checkin else "")
+    phone = request.args.get("phone", "")
+    address = request.args.get("address", "")
     tag_list = RESTAURANT_TAGS if kind == "restaurant" else HOTEL_TAGS
     boxes = "".join(
         f'<label><input type="checkbox" name="tag" value="{esc(t)}" style="width:auto"> {esc(t)}</label><br>' for t in tag_list)
@@ -1290,6 +1308,8 @@ def new_review():
       <label>Place name</label><input name="place_name" value="{esc(place)}" required>
       <label>Airport code</label><input name="airport_code" value="{esc(airport)}">
       <label>City</label><input name="city" value="{esc(city)}">
+      <label>Phone</label><input name="phone" value="{esc(phone)}" inputmode="tel">
+      <label>Address</label><input name="address" value="{esc(address)}">
       <label>Star rating</label><select name="rating">
       <option value="5">5 stars</option><option value="4">4 stars</option><option value="3">3 stars</option>
       <option value="2">2 stars</option><option value="1">1 star</option></select>
@@ -1329,6 +1349,8 @@ def _edit_review_form(vals, kind, tag_list, photo_rows):
       <label>Place name</label><input name="place_name" value="{esc(vals.get('place_name', ''))}" required>
       <label>Airport code</label><input name="airport_code" value="{esc(vals.get('airport_code', ''))}">
       <label>City</label><input name="city" value="{esc(vals.get('city', ''))}">
+      <label>Phone</label><input name="phone" value="{esc(vals.get('phone', ''))}" inputmode="tel">
+      <label>Address</label><input name="address" value="{esc(vals.get('address', ''))}">
       <label>Star rating</label><select name="rating">{opts}</select>
       <label>Pilot tags</label><div>{boxes}</div>
       <label>Other tags (comma-separated)</label><input name="custom_tags" value="{esc(custom)}">
@@ -1354,6 +1376,8 @@ def edit_review(review_id):
             "place_name": request.form.get("place_name", "").strip(),
             "airport_code": request.form.get("airport_code", "").strip().upper(),
             "city": request.form.get("city", "").strip(),
+            "phone": request.form.get("phone", "").strip(),
+            "address": request.form.get("address", "").strip(),
             "rating": request.form.get("rating", 5),
             "notes": request.form.get("notes", "").strip(),
         }
@@ -1375,18 +1399,18 @@ def edit_review(review_id):
                         _edit_review_form(vals, kind, tag_list, photo_rows),
                         error=f"That would be {len(kept) + len(new_files)} photos — the limit is 5 per review.")
         db.execute(
-            "UPDATE reviews SET place_name=?, airport_code=?, city=?, rating=?, tags=?, notes=? "
+            "UPDATE reviews SET place_name=?, airport_code=?, city=?, phone=?, address=?, rating=?, tags=?, notes=? "
             "WHERE id=? AND user_id=?",
-            (vals["place_name"], vals["airport_code"], vals["city"], rating, vals["tags"],
-             vals["notes"], review_id, user["id"]))
+            (vals["place_name"], vals["airport_code"], vals["city"], vals["phone"], vals["address"],
+             rating, vals["tags"], vals["notes"], review_id, user["id"]))
         for pid in remove_ids:
             db.execute("DELETE FROM photos WHERE id=? AND review_id=?", (pid, review_id))
         _save_review_photos(db, review_id, new_files)
         db.commit()
         return redirect(url_for("hotels" if kind == "hotel" else "restaurants"))
     vals = {"place_name": r["place_name"] or "", "airport_code": r["airport_code"] or "",
-            "city": r["city"] or "", "rating": r["rating"], "tags": r["tags"] or "",
-            "notes": r["notes"] or ""}
+            "city": r["city"] or "", "phone": r["phone"] or "", "address": r["address"] or "",
+            "rating": r["rating"], "tags": r["tags"] or "", "notes": r["notes"] or ""}
     return page("Edit review", user, _edit_review_form(vals, kind, tag_list, photo_rows))
 
 
@@ -1557,7 +1581,8 @@ def external_results_html(kind, data, user):
             detail = f"<div>Cuisine: {esc(r['cuisine'])}</div><div>Hours: {esc(r['hours'])}</div>"
         web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
         add = (url_for("new_review") + "?" + urllib.parse.urlencode(
-            {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"]}))
+            {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"],
+             "phone": r["phone"] or "", "address": r["address"] or ""}))
         checkin_btn = ""
         if place["airport_code"]:
             checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px" onsubmit="return confirm(\'Check in here?\')">'
