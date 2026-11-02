@@ -2078,6 +2078,9 @@ def friends():
     flash = None
     error = None
     duplicates = []
+    # Search box filters the friends list by name, company (airline), or plane (aircraft).
+    # request.values covers the GET search form and POST actions that keep ?q= in the URL.
+    fq = (request.values.get("q") or "").strip()
     friend_ids = {r["friend_id"] for r in db.execute(
         "SELECT friend_id FROM friends WHERE user_id=?", (user["id"],)).fetchall()}
     if request.method == "POST":
@@ -2128,6 +2131,12 @@ def friends():
     rows = db.execute(
         "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
     ).fetchall()
+    if fq:
+        fl = fq.lower()
+        rows = [fr for fr in rows
+                if fl in (fr["name"] or "").lower()
+                or fl in (fr["airline"] or "").lower()
+                or fl in (fr["aircraft"] or "").lower()]
     checkin = current_checkin(user["id"])
     items = ""
     for fr in rows:
@@ -2184,9 +2193,19 @@ def friends():
                       f'<button type="submit" name="req_action" value="cancel" style="background:#7f1d1d;width:auto;padding:4px 10px">Cancel</button>'
                       f"</form></li>")
     req_card = f'<div class="card"><h2>Friend requests</h2><ul>{req_items}</ul></div>' if req_items else ""
+    search_html = (f'<form method="get" style="margin-bottom:12px">'
+                   f'<input name="q" placeholder="Search by name, company, or plane" '
+                   f'value="{esc(fq)}" autocomplete="off">'
+                   f'<button type="submit">Search</button></form>')
+    if fq:
+        search_html += (f'<p class="muted">{len(rows)} match{"es" if len(rows) != 1 else ""} for '
+                        f'"{esc(fq)}" — <a href="{url_for("friends")}">Clear search</a></p>')
+    list_html = items or ('<li class="muted">No friends match.</li>' if fq
+                          else '<li class="muted">No friends yet.</li>')
     body = f"""<div class="card"><h2>Friends</h2>
       <p class="muted">Friends show as nearby only when their check-in matches yours.</p>
-      <ul>{items or '<li class="muted">No friends yet.</li>'}</ul></div>
+      {search_html}
+      <ul>{list_html}</ul></div>
       {req_card}
       {add_card}"""
     return page("Friends", user, body, flash=flash, error=error)
