@@ -1237,8 +1237,8 @@ def admin():
     db = get_db()
     users = db.execute(
         "SELECT name, email, role, airline, base, aircraft, created_at FROM users ORDER BY created_at").fetchall()
-    n_checkins = db.execute("SELECT count(*) FROM checkins").fetchone()[0]
-    n_reviews = db.execute("SELECT count(*) FROM reviews").fetchone()[0]
+    n_checkins = db.execute("SELECT count(*) AS n FROM checkins").fetchone()["n"]
+    n_reviews = db.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"]
     rows = "".join(
         f"<li>{esc(u['name'])} — {esc(u['email'])} "
         f"({esc(u['role'] or 'pilot').title()} · {esc(u['airline'])} · {esc(u['base'])} · {esc(u['aircraft'])}) "
