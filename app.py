@@ -1210,7 +1210,7 @@ def board():
         db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
                    (user["id"], code, city.strip().lower()))
         db.commit()
-        flash = f"Checked in at {esc(place)}." if place else "Checked in."
+        return redirect(url_for("index"))
     if request.method == "POST" and request.form.get("action") == "checkout":
         db.execute("UPDATE checkins SET checked_out = 1 WHERE user_id = ? AND checked_out = 0", (user["id"],))
         db.commit()
