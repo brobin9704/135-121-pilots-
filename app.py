@@ -93,6 +93,7 @@ SQLITE_SCHEMA = """
         name TEXT NOT NULL, airline TEXT, base TEXT, aircraft TEXT,
         email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'pilot',
+        layout TEXT NOT NULL DEFAULT 'tabs',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS checkins (
@@ -149,6 +150,7 @@ POSTGRES_SCHEMA = """
         name TEXT NOT NULL, airline TEXT, base TEXT, aircraft TEXT,
         email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'pilot',
+        layout TEXT NOT NULL DEFAULT 'tabs',
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS checkins (
@@ -247,6 +249,7 @@ def init_db():
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS hotel_place TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS restaurant_place TEXT")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pilot'")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT 'tabs'")
             cur.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
             cur.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
             conn.commit()
@@ -270,6 +273,10 @@ def init_db():
                 pass  # column already exists
         try:
             db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'pilot'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN layout TEXT NOT NULL DEFAULT 'tabs'")
         except sqlite3.OperationalError:
             pass  # column already exists
         db.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
@@ -510,10 +517,12 @@ nav a,.btn{background:#1e293b;color:#e2e8f0;text-decoration:none;padding:10px 14
 nav a.active{background:#0369a1}
 .topbar{display:flex;align-items:center;gap:10px;padding:12px 4px}
 .brand{font-weight:800;letter-spacing:.5px;font-size:15px}
-.profile_ic{margin-left:auto;text-decoration:none;font-size:22px}
-.tabs{display:flex;gap:4px;padding:8px 4px;margin:0 -4px;overflow-x:auto;position:sticky;top:0;z-index:10;background:#0f172a;border-bottom:1px solid #334155}
-.tabs a{font-size:13.5px;padding:8px 13px;border-radius:999px;white-space:nowrap;color:#94a3b8;text-decoration:none}
-.tabs a.on{background:#0284c7;color:#fff;font-weight:700}
+.has_bnav .wrap{padding-bottom:96px}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1626;border-top:1px solid #334155;padding:8px 4px calc(10px + env(safe-area-inset-bottom))}
+.bnav a{flex:1;text-align:center;color:#8fa0b8;text-decoration:none;font-size:10px}
+.bnav a .e{display:block;font-size:20px}
+.bnav a.on{color:#38bdf8;font-weight:700}
+.fab{position:fixed;right:16px;bottom:84px;z-index:31;width:56px;height:56px;border-radius:50%;background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;font-size:30px;line-height:54px;text-align:center;text-decoration:none;box-shadow:0 6px 18px rgba(2,132,199,.5)}
 .card{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:16px;margin:12px 0}
 input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;box-sizing:border-box}
 button,.btn-primary{background:#0284c7;color:#fff;border:0;padding:12px 16px;border-radius:10px;font-size:16px;cursor:pointer;width:100%}
@@ -636,22 +645,24 @@ FINDME_JS = """<script>
 </script>"""
 
 def page(title, user, body, flash=None, error=None):
-    chrome = ""
-    if user:
-        tabs = [("Home", url_for("index")), ("Check-In", url_for("board")),
-                ("Hotels", url_for("hotels")), ("Restaurants", url_for("restaurants")),
-                ("Friends", url_for("friends"))]
-        tab_html = "".join(
-            f'<a href="{u}" class="{"on" if t == title else ""}">{t}</a>' for t, u in tabs)
-        chrome = (f'<div class="topbar"><span class="brand">✈ PILOTS &amp; CREW</span>'
-                  f'<a href="{url_for("profile")}" class="profile_ic" aria-label="My Profile">👤</a></div>'
-                  f'<nav class="tabs">{tab_html}</nav>')
     msg = f'<div class="flash">{flash}</div>' if flash else ""
     err = f'<div class="error">{error}</div>' if error else ""
+    chrome, after, bcls = "", "", ""
+    if user:
+        bcls = "has_bnav"
+        chrome = '<div class="topbar"><span class="brand">✈ PILOTS &amp; CREW</span></div>'
+        items = [("Home", url_for("index"), "🏠"), ("Hotels", url_for("hotels"), "🛏"),
+                 ("Restaurants", url_for("restaurants"), "🍽"), ("Friends", url_for("friends"), "👥"),
+                 ("Profile", url_for("profile"), "👤")]
+        bnav = "".join(
+            f'<a href="{u}" class="{"on" if (t == title or (t == "Profile" and title == "My Profile")) else ""}">'
+            f'<span class="e">{e}</span>{t}</a>' for t, u, e in items)
+        after = (f'<nav class="bnav">{bnav}</nav>'
+                 f'<a href="{url_for("board")}" class="fab" aria-label="Check in">+</a>')
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       <title>{{{{ title }}}} - Pilots and Crew Community</title><style>{CSS}</style></head>
-      <body><div class="wrap">{chrome}{msg}{err}{body}</div></body></html>""",
+      <body class="{bcls}"><div class="wrap">{chrome}{msg}{err}{body}{after}</div></body></html>""",
       title=title)
 
 def esc(s):
