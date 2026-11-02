@@ -582,7 +582,7 @@ LOCMAP_JS = """
     s.onerror=function(){ loading=false; say('Could not load the map. Check your connection and try again.'); };
     document.head.appendChild(s);
   }
-  btn.addEventListener('click',function(){
+  function locate(){
     if(!navigator.geolocation){ say('Location is not available on this device.'); return; }
     say('Getting your location\u2026');
     navigator.geolocation.getCurrentPosition(function(pos){
@@ -604,7 +604,9 @@ LOCMAP_JS = """
     },function(err){
       say(err.code===1?'Location permission was denied.':'Could not get your location. Try again.');
     },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
-  });
+  }
+  btn.addEventListener('click',locate);
+  locate();
 })();
 </script>
 """
