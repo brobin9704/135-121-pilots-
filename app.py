@@ -26,7 +26,7 @@ try:
 except ImportError:
     _PIL_OK = False
 
-from flask import Flask, Response, g, jsonify, redirect, render_template_string, request, session, url_for
+from flask import Flask, Response, flash as flask_flash, g, get_flashed_messages, jsonify, redirect, render_template_string, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
@@ -143,6 +143,14 @@ SQLITE_SCHEMA = """
         tags TEXT, notes TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        review_id INTEGER NOT NULL REFERENCES reviews(id),
+        reporter_id INTEGER NOT NULL REFERENCES users(id),
+        reason TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(review_id, reporter_id)
+    );
 """
 
 POSTGRES_SCHEMA = """
@@ -200,6 +208,14 @@ POSTGRES_SCHEMA = """
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
         tags TEXT, notes TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS reports (
+        id SERIAL PRIMARY KEY,
+        review_id INTEGER NOT NULL REFERENCES reviews(id),
+        reporter_id INTEGER NOT NULL REFERENCES users(id),
+        reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE(review_id, reporter_id)
     );
 """
 
@@ -365,6 +381,7 @@ def search_saved_reviews(kind, query, scope, user):
         ]).lower()
         return all(w in hay for w in words)
     all_results = [r for r in rows if matches(r)]
+    all_results = visible_reviews(all_results, user)
     checkin = current_checkin(user["id"]) if user else None
     if scope == "in" and checkin:
         in_results = [r for r in all_results
@@ -686,9 +703,16 @@ def page(title, user, body, flash=None, error=None):
             f'<span class="e">{e}</span>{t}</a>' for t, u, e in items)
         after = (f'<nav class="bnav">{bnav}</nav>'
                  f'<a href="{url_for("board")}" class="fab" aria-label="Check in">+</a>'
-                 f'{MINIMAP_JS}')
+                 f'{MINIMAP_JS}'
+                 '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}</script>')
+    pwa_head = ('<link rel="manifest" href="/manifest.json">'
+                '<meta name="theme-color" content="#0f172a">'
+                '<meta name="mobile-web-app-capable" content="yes">'
+                '<meta name="apple-mobile-web-app-capable" content="yes">'
+                '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">')
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+      {pwa_head}
       <title>{{{{ title }}}} - Pilots and Crew Community</title><style>{CSS}</style></head>
       <body class="{bcls}"><div class="wrap">{chrome}{msg}{err}{body}{after}</div></body></html>""",
       title=title)
@@ -756,6 +780,19 @@ MINIMAP_JS = """
 </script>
 """
 
+def hidden_review_ids():
+    """Review ids flagged by 3+ pilots -> report count. Cached per request."""
+    if not hasattr(g, "_hidden"):
+        rows = get_db().execute(
+            "SELECT review_id, COUNT(*) AS c FROM reports GROUP BY review_id HAVING COUNT(*) >= 3").fetchall()
+        g._hidden = {r["review_id"]: r["c"] for r in rows}
+    return g._hidden
+
+def visible_reviews(rows, user):
+    hidden = hidden_review_ids()
+    uid = user["id"] if user else None
+    return [r for r in rows if r["id"] not in hidden or r["user_id"] == uid]
+
 def review_card(r, user):
     tags = "".join(f'<span class="tag">{esc(t.strip())}</span>' for t in (r["tags"] or "").split(",") if t.strip())
     own = ""
@@ -766,6 +803,13 @@ def review_card(r, user):
     loc_query = ", ".join(p for p in [r["place_name"] or "", r["city"] or ""] if p)
     loc_url = "https://www.openstreetmap.org/search?" + urllib.parse.urlencode({"query": loc_query})
     photos = review_photos_html(r["id"])
+    hidden = hidden_review_ids()
+    report = ""
+    if user and r["user_id"] != user["id"]:
+        report = (f'<p style="margin:8px 0 0"><a class="muted" href="{url_for("report_review", review_id=r["id"])}">'
+                  f'Report review</a></p>')
+    elif user and r["id"] in hidden:
+        report = (f'<p class="muted">Hidden from other pilots — flagged by {hidden[r["id"]]} pilots.</p>')
     contact = ""
     if r["address"]:
         contact += f'<div>{esc(r["address"])}</div>'
@@ -777,39 +821,94 @@ def review_card(r, user):
             minimap = f'<div class="minimap" data-lat="{float(r["lat"])}" data-lon="{float(r["lon"])}"></div>'
         except (TypeError, ValueError):
             pass
+    code = (r["airport_code"] or "").strip()
+    code_html = (f'<a href="{url_for("airport_hub", code=code.upper())}">{esc(code)}</a>' if code
+                 else '<span class="muted">—</span>')
     return f"""<div class="card"><a href="{loc_url}" target="_blank" rel="noopener"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>
-      <div class="muted">{esc(r['airport_code'])} · {esc(r['city'])} · by {esc(r['author'])}</div>
-      {contact}{minimap}<div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{own}</div>"""
+      <div class="muted">{code_html} · {esc(r['city'])} · by {esc(r['author'])}</div>
+      {contact}{minimap}<div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{own}{report}</div>"""
 
-def saved_reviews_section(kind, user, q, scope):
+def place_aggregates(rows):
+    """Aggregate reviews by place: avg rating + count, best first."""
+    agg = {}
+    for r in rows:
+        key = ((r["place_name"] or "").strip().lower(), (r["airport_code"] or "").strip().upper(),
+               (r["city"] or "").strip().lower())
+        a = agg.setdefault(key, {"name": (r["place_name"] or "").strip(), "code": r["airport_code"],
+                                 "city": r["city"], "total": 0, "n": 0, "lat": None, "lon": None})
+        try:
+            a["total"] += int(r["rating"] or 0)
+        except (TypeError, ValueError):
+            pass
+        a["n"] += 1
+        if a["lat"] is None and r["lat"] is not None:
+            a["lat"], a["lon"] = r["lat"], r["lon"]
+    out = [{"name": a["name"], "code": a["code"], "city": a["city"], "avg": a["total"] / a["n"],
+            "n": a["n"], "lat": a["lat"], "lon": a["lon"]}
+           for a in agg.values() if a["n"]]
+    out.sort(key=lambda x: (-x["avg"], -x["n"], x["name"].lower()))
+    return out
+
+def saved_reviews_section(kind, user, q, scope, sort="new", tag=""):
     in_results, all_results, checkin = search_saved_reviews(kind, q, scope, user)
     label = "hotel" if kind == "hotel" else "restaurant"
     if not checkin:
         return (f'<div class="card"><h2>Saved pilot {label} reviews</h2>'
                 f'<p class="muted">Check in on the <a href="{url_for("board")}">Check-In</a> '
                 f'page to see saved reviews.</p></div>')
+    if sort not in ("new", "top"):
+        sort = "new"
+    tag = (tag or "").strip()
+    if tag:
+        tl = tag.lower()
+        in_results = [r for r in in_results
+                      if any(x.strip().lower() == tl for x in (r["tags"] or "").split(","))]
+        all_results = [r for r in all_results
+                       if any(x.strip().lower() == tl for x in (r["tags"] or "").split(","))]
+    if sort == "top":
+        in_results = sorted(in_results, key=lambda r: (-(r["rating"] or 0), -(r["id"] or 0)))
+    def _qs(**kw):
+        base = {"q": q or "", "scope": scope, "sort": sort, "tag": tag}
+        base.update(kw)
+        return "?" + urllib.parse.urlencode({k: v for k, v in base.items() if v})
     other_count = 0
     hint = ""
     if scope == "in" and checkin and not in_results and all_results:
         other_count = len(all_results)
         hint = (f'<div class="card">Found in another area — see all areas. '
-                f'<a href="?q={urllib.parse.quote(q or "")}&scope=all">See all areas ({other_count})</a></div>')
-    scope_links = ""
-    if checkin:
-        scope_links = (f'<p>Scope: <a href="?q={urllib.parse.quote(q or "")}&scope=in">In this area</a> | '
-                       f'<a href="?q={urllib.parse.quote(q or "")}&scope=all">All areas</a> '
-                       f'(current check-in: {esc(checkin["airport_code"])} · {esc(checkin["city"])})</p>')
-    else:
-        scope_links = '<p class="muted">No active check-in — showing all areas. Check in on the Check-In page to scope to your area.</p>'
+                f'<a href="{_qs(scope="all")}">See all areas ({other_count})</a></div>')
+    scope_links = (f'<p>Scope: <a href="{_qs(scope="in")}">In this area</a> | '
+                   f'<a href="{_qs(scope="all")}">All areas</a> '
+                   f'(current check-in: {esc(checkin["airport_code"])} · {esc(checkin["city"])})</p>')
+    sort_links = (f'<p>Sort: {"<strong>Newest</strong>" if sort == "new" else f"<a href=\"{_qs(sort="new")}\">Newest</a>"} | '
+                  f'{"<strong>Top rated</strong>" if sort == "top" else f"<a href=\"{_qs(sort="top")}\">Top rated</a>"}</p>')
+    tag_list = RESTAURANT_TAGS if kind == "restaurant" else HOTEL_TAGS
+    tag_chips = []
+    for t in tag_list:
+        if t.lower() == tag.lower() and tag:
+            tag_chips.append(f'<a class="tag" href="{_qs(tag="")}" style="background:#0369a1">{esc(t)} ✕</a>')
+        else:
+            tag_chips.append(f'<a class="tag" href="{_qs(tag=t)}">{esc(t)}</a>')
+    tag_html = f'<p style="line-height:2.2">{" ".join(tag_chips)}</p>' if tag_chips else ""
+    base_rows = in_results if scope == "in" else all_results
+    aggs = place_aggregates(base_rows)[:6]
+    top_html = ""
+    if aggs:
+        chips = "".join(
+            f'<a class="tag" href="{_qs(q=a["name"], tag="")}">★{a["avg"]:.1f} ({a["n"]}) · {esc(a["name"])}</a> '
+            for a in aggs)
+        top_html = f'<div class="card"><h2>Top rated {label}s</h2><p style="line-height:2.2">{chips}</p></div>'
     cards = "".join(review_card(r, user) for r in in_results) or '<p class="muted">No saved reviews match yet.</p>'
     return f"""
       <div class="card"><h2>Search saved pilot {label} reviews</h2>
       <form method="get"><label>Search saved pilot {label} reviews</label>
       <input type="text" name="q" value="{esc(q)}" placeholder="Place, airport code, city, notes, or tag">
       <input type="hidden" name="scope" value="{esc(scope)}">
+      <input type="hidden" name="sort" value="{esc(sort)}">
+      <input type="hidden" name="tag" value="{esc(tag)}">
       <button type="submit">Search</button></form>
       <p class="muted">Searches pilot reviews saved in this app — place name, airport code, city, phone, address, notes, and tags. Every word must match somewhere.</p>
-      {scope_links}</div>{hint}{cards}"""
+      {scope_links}{sort_links}{tag_html}</div>{top_html}{hint}{cards}"""
 
 # ---------------------------------------------------------------- auth
 @app.route("/register", methods=["GET", "POST"])
@@ -1122,11 +1221,12 @@ def index():
     user = current_user()
     db = get_db()
     checkin = current_checkin(user["id"])
+    notes = get_flashed_messages()
     body = (current_checkin_html(checkin)
             + LOCMAP_HTML + LOCMAP_JS
             + friends_nearby_html(db, user, checkin)
             + area_reviews_html(db, user, checkin))
-    return page("Home", user, body)
+    return page("Home", user, body, flash=" ".join(notes) if notes else None)
 
 # ---------------------------------------------------------------- board
 def nearest_airport_for(lat, lon):
@@ -1214,6 +1314,7 @@ def area_reviews_html(db, user, checkin):
            WHERE upper(r.airport_code) = ? OR lower(r.city) = ?
            ORDER BY r.created_at DESC, r.id DESC LIMIT 20""",
         ((checkin["airport_code"] or "").upper(), (checkin["city"] or "").strip().lower())).fetchall()
+    rev_rows = visible_reviews(rev_rows, user)
     html = '<div class="card"><h2>Pilot reviews in this area</h2>'
     if rev_rows:
         html += (f'<p class="muted">{len(rev_rows)} reviews at '
@@ -1260,6 +1361,22 @@ def board():
         db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
                    (user["id"], code, city.strip().lower()))
         db.commit()
+        # Friend nearby alerts: flash + email to friends checked in at the same place.
+        buds = []
+        for fr in db.execute(
+                "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?",
+                (user["id"],)).fetchall():
+            fc = current_checkin(fr["id"])
+            if fc and (fc["airport_code"].upper() == code
+                       or fc["city"].strip().lower() == city.strip().lower()):
+                buds.append(fr)
+        if buds:
+            names = ", ".join(fr["name"] for fr in buds)
+            flask_flash(f"👥 {names} {'is' if len(buds) == 1 else 'are'} also checked in at {code} / {city}.")
+            for fr in buds:
+                send_email(fr["email"], f"{user['name']} checked in at {code} / {city}",
+                           f"{user['name']} just checked in at {code} / {city}, where you are checked in too.\n\n"
+                           "Open Pilot & Crew Community to say hi.")
         return redirect(url_for("index"))
     if request.method == "POST" and request.form.get("action") == "checkout":
         db.execute("UPDATE checkins SET checked_out = 1 WHERE user_id = ? AND checked_out = 0", (user["id"],))
@@ -1455,6 +1572,37 @@ def edit_review(review_id):
     return page("Edit review", user, _edit_review_form(vals, kind, tag_list, photo_rows))
 
 
+@app.route("/reviews/<int:review_id>/report", methods=["GET", "POST"])
+@login_required
+def report_review(review_id):
+    user = current_user()
+    db = get_db()
+    r = db.execute("SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id WHERE r.id=?",
+                   (review_id,)).fetchone()
+    if not r:
+        return "Not found", 404
+    back = url_for("hotels" if r["kind"] == "hotel" else "restaurants")
+    if r["user_id"] == user["id"]:
+        return redirect(back)
+    if request.method == "POST":
+        reason = request.form.get("reason", "").strip() or "Other"
+        try:
+            db.execute("INSERT INTO reports (review_id, reporter_id, reason) VALUES (?,?,?)",
+                       (review_id, user["id"], reason))
+            db.commit()
+        except _INTEGRITY_ERRORS:
+            db.rollback()
+        if hasattr(g, "_hidden"):
+            delattr(g, "_hidden")
+        return redirect(back)
+    body = f"""<div class="card"><h2>Report review</h2>
+      <p class="muted">Flag <strong>{esc(r['place_name'])}</strong> ({r['rating']}★ by {esc(r['author'])}). Reviews flagged by 3 pilots are hidden.</p>
+      <form method="post"><label>Reason</label><select name="reason">
+      <option>Spam</option><option>Inappropriate</option><option>Inaccurate</option><option>Other</option>
+      </select><button type="submit">Send report</button></form></div>"""
+    return page("Report review", user, body)
+
+
 @app.route("/photo/<int:photo_id>")
 @login_required
 def photo(photo_id):
@@ -1469,6 +1617,8 @@ def delete_review(review_id):
     user = current_user()
     db = get_db()
     db.execute("DELETE FROM photos WHERE review_id IN (SELECT id FROM reviews WHERE id=? AND user_id=?)",
+               (review_id, user["id"]))
+    db.execute("DELETE FROM reports WHERE review_id IN (SELECT id FROM reviews WHERE id=? AND user_id=?)",
                (review_id, user["id"]))
     db.execute("DELETE FROM reviews WHERE id = ? AND user_id = ?", (review_id, user["id"]))
     db.commit()
@@ -1639,15 +1789,73 @@ def external_results_html(kind, data, user):
           <p><a href="{add}">Add review</a></p>{checkin_btn}</div>"""
     return header + cards
 
+@app.route("/airport/<code>")
+@login_required
+def airport_hub(code):
+    """One page per airport: top hotels/restaurants, recent reviews, friends here."""
+    user = current_user()
+    code = (code or "").strip().upper()
+    db = get_db()
+    city, aname = "", ""
+    if code in AIRPORT_COORDS:
+        _lat, _lon, city, aname = AIRPORT_COORDS[code]
+    rows = db.execute(
+        """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
+           WHERE upper(r.airport_code) = ? OR lower(r.city) = ?
+           ORDER BY r.created_at DESC, r.id DESC""",
+        (code, (city or "").strip().lower())).fetchall()
+    if not city:
+        for r in rows:
+            if (r["airport_code"] or "").upper() == code and r["city"]:
+                city = r["city"]
+                break
+        if not city:
+            c = db.execute("SELECT city FROM checkins WHERE upper(airport_code)=? LIMIT 1", (code,)).fetchone()
+            if c:
+                city = c["city"]
+    rows = visible_reviews(rows, user)
+    hotels_agg = place_aggregates([r for r in rows if r["kind"] == "hotel"])[:5]
+    rests_agg = place_aggregates([r for r in rows if r["kind"] == "restaurant"])[:5]
+    def agg_chips(aggs, kind):
+        if not aggs:
+            return '<p class="muted">No reviews yet.</p>'
+        dest = url_for("hotels") if kind == "hotel" else url_for("restaurants")
+        return ("<p style='line-height:2.2'>" + "".join(
+            f'<a class="tag" href="{dest}?q={urllib.parse.quote(a["name"])}&scope=all">'
+            f'★{a["avg"]:.1f} ({a["n"]}) · {esc(a["name"])}</a> ' for a in aggs) + "</p>")
+    friend_rows = db.execute(
+        "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?",
+        (user["id"],)).fetchall()
+    buds = []
+    for fr in friend_rows:
+        fc = current_checkin(fr["id"])
+        if fc and (fc["airport_code"].upper() == code
+                   or (city and fc["city"].strip().lower() == city.strip().lower())):
+            buds.append(f"<li>{esc(fr['name'])} — {checkin_label(fc)}</li>")
+    buds_html = "".join(buds) or "<li class='muted'>No friends checked in here.</li>"
+    cards = "".join(review_card(r, user) for r in rows[:10]) or '<p class="muted">No reviews here yet — be the first.</p>'
+    title = f"{code} · {city}" if city else code
+    body = f"""<div class="card"><h2>{esc(title)}</h2>
+      {f'<p class="muted">{esc(aname)}</p>' if aname else ''}
+      <p class="muted">{len(rows)} pilot reviews</p></div>
+      <div class="card"><h2>Top hotels</h2>{agg_chips(hotels_agg, "hotel")}</div>
+      <div class="card"><h2>Top restaurants</h2>{agg_chips(rests_agg, "restaurant")}</div>
+      <div class="card"><h2>Friends here</h2><ul>{buds_html}</ul></div>
+      <div class="card"><h2>Recent reviews</h2></div>{cards}"""
+    return page(title, user, body)
+
+
 @app.route("/hotels", methods=["GET", "POST"])
 @login_required
 def hotels():
     user = current_user()
     q = request.args.get("q", "")
     scope = request.args.get("scope", "in")
+    sort = request.args.get("sort", "new")
+    tag = request.args.get("tag", "")
     card, data, _ = at_location_section("hotel", user, [2, 5, 10], 5)
     ext = external_results_html("hotel", data, user) if data else ""
-    body = card + ext + saved_reviews_section("hotel", user, q, scope)
+    body = card + ext + saved_reviews_section("hotel", user, q, scope, sort, tag)
     return page("Hotels", user, body)
 
 @app.route("/restaurants", methods=["GET", "POST"])
@@ -1656,9 +1864,11 @@ def restaurants():
     user = current_user()
     q = request.args.get("q", "")
     scope = request.args.get("scope", "in")
+    sort = request.args.get("sort", "new")
+    tag = request.args.get("tag", "")
     card, data, _ = at_location_section("restaurant", user, [5, 10, 20], 20)
     ext = external_results_html("restaurant", data, user) if data else ""
-    body = card + ext + saved_reviews_section("restaurant", user, q, scope)
+    body = card + ext + saved_reviews_section("restaurant", user, q, scope, sort, tag)
     return page("Restaurants", user, body)
 
 # ---------------------------------------------------------------- friends
@@ -1854,6 +2064,69 @@ def friends():
       {req_card}
       {add_card}"""
     return page("Friends", user, body, flash=flash, error=error)
+
+# ---------------------------------------------------------------- PWA
+PWA_ICON_SVG = (
+    "data:image/svg+xml,"
+    "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E"
+    "%3Crect width='512' height='512' rx='112' fill='%230f172a'/%3E"
+    "%3Ctext x='256' y='352' font-size='300' text-anchor='middle'%3E%E2%9C%88%EF%B8%8F%3C/text%3E%3C/svg%3E"
+)
+
+@app.route("/manifest.json")
+def manifest():
+    return jsonify({
+        "name": "Pilot & Crew Community",
+        "short_name": "PilotCrew",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0f172a",
+        "theme_color": "#0f172a",
+        "icons": [{"src": PWA_ICON_SVG, "sizes": "any", "type": "image/svg+xml"}],
+    })
+
+SW_JS = """const CACHE = "pcc-v1";
+const CORE = ["/static/airports.json", "/offline", "/manifest.json"];
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
+});
+self.addEventListener("activate", (e) => {
+  e.waitUntil(caches.keys()
+    .then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+self.addEventListener("fetch", (e) => {
+  const u = new URL(e.request.url);
+  if (u.origin !== location.origin || e.request.method !== "GET") return;
+  if (e.request.mode === "navigate") {
+    e.respondWith(fetch(e.request).catch(() => caches.match("/offline")));
+    return;
+  }
+  e.respondWith(
+    caches.match(e.request).then((hit) => {
+      const net = fetch(e.request).then((res) => {
+        if (res.ok) {
+          const cp = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, cp));
+        }
+        return res;
+      }).catch(() => hit);
+      return hit || net;
+    })
+  );
+});
+"""
+
+@app.route("/sw.js")
+def service_worker():
+    return Response(SW_JS, mimetype="application/javascript")
+
+@app.route("/offline")
+def offline():
+    return page("Offline", None,
+                '<div class="card"><h2>You are offline</h2>'
+                '<p class="muted">Check your connection and try again.</p>'
+                '<p><a href="/">Retry</a></p></div>')
 
 if __name__ == "__main__":
     init_db()
