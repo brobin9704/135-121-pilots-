@@ -1135,7 +1135,7 @@ def current_checkin_html(checkin):
     return f"""<div class="card"><h2>Current check-in</h2>
       <p><strong>{status_html}</strong></p>
       <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
-      <form method="post" action="{url_for('board')}"><input type="hidden" name="action" value="checkout">
+      <form method="post" action="{url_for('board')}" onsubmit="return confirm('Check out of this location?')"><input type="hidden" name="action" value="checkout">
       <button type="submit">Check out</button></form></div>"""
 
 
