@@ -1218,7 +1218,37 @@ def profile():
         db.commit()
         user = current_user()
         return page("My Profile", user, profile_form(user), flash="Profile updated.")
-    return page("My Profile", user, profile_form(user))
+    admin_card = (f'<div class="card"><h2>Admin</h2><p><a href="{url_for("admin")}">View app stats</a> — '
+                  'registered users, check-ins, reviews.</p></div>') if _is_admin(user) else ""
+    return page("My Profile", user, profile_form(user) + admin_card)
+
+def _is_admin(user):
+    """The app owner, set via the ADMIN_EMAIL env var (kept out of the repo)."""
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    return bool(admin_email) and (user["email"] or "").strip().lower() == admin_email
+
+@app.route("/admin")
+@login_required
+def admin():
+    """Owner-only stats: registered users, check-ins, reviews."""
+    user = current_user()
+    if not _is_admin(user):
+        return page("Admin", user, '<div class="card"><p class="muted">Not available.</p></div>')
+    db = get_db()
+    users = db.execute(
+        "SELECT name, email, role, airline, base, aircraft, created_at FROM users ORDER BY created_at").fetchall()
+    n_checkins = db.execute("SELECT count(*) FROM checkins").fetchone()[0]
+    n_reviews = db.execute("SELECT count(*) FROM reviews").fetchone()[0]
+    rows = "".join(
+        f"<li>{esc(u['name'])} — {esc(u['email'])} "
+        f"({esc(u['role'] or 'pilot').title()} · {esc(u['airline'])} · {esc(u['base'])} · {esc(u['aircraft'])}) "
+        f"<span class='muted'>joined {esc(str(u['created_at'] or ''))}</span></li>"
+        for u in users)
+    body = (f'<div class="card"><h2>App stats</h2>'
+            f'<p><strong>{len(users)}</strong> registered users · '
+            f'<strong>{n_checkins}</strong> check-ins · <strong>{n_reviews}</strong> reviews</p>'
+            f'<ul>{rows}</ul></div>')
+    return page("Admin", user, body)
 
 def _role_options(selected):
     return "".join(
