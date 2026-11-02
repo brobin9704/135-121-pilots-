@@ -1073,6 +1073,7 @@ def index():
             f'{items}</aside>')
     checkin = current_checkin(user["id"])
     main = (current_checkin_html(checkin)
+            + LOCMAP_HTML + LOCMAP_JS
             + friends_nearby_html(db, user, checkin)
             + area_reviews_html(db, user, checkin))
     body = f'<div class="home_layout">{menu}<div class="home_main">{main}</div></div>'
@@ -1236,7 +1237,6 @@ def board():
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
       <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
-      {LOCMAP_HTML}{LOCMAP_JS}
       {friends_nearby_html(db, user, checkin)}{area_reviews_html(db, user, checkin)}{history_html}"""
     return page("Check-In", user, body, flash=flash)
 
