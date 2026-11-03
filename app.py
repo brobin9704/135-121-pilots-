@@ -479,10 +479,22 @@ def overpass_query(lat, lon, radius_miles, amenity_filter):
     raise RuntimeError("listing service unavailable on all mirrors")
 
 def nominatim_fallback(lat, lon, radius_miles, kind, city):
-    """Fallback when Overpass is busy: search by place type near the city, then filter by distance."""
+    """Fallback when Overpass is busy: search by place type near the city, then filter by distance.
+
+    The search is geographically bounded to a box around the coordinates, so an
+    ambiguous city name (e.g. Bridgeport WV vs Bridgeport CT) can't pull in
+    results from the wrong place.
+    """
+    import math
     term = {"hotel": "hotels", "restaurant": "restaurants"}.get(kind, "attractions")
+    # Bounding box around the search point (a touch wider than the radius; the
+    # haversine filter below does the precise cut).
+    lat_d = radius_miles * 1.2 / 69.0
+    lon_d = radius_miles * 1.2 / (69.0 * max(0.2, math.cos(math.radians(lat))))
+    viewbox = f"{lon - lon_d},{lat + lat_d},{lon + lon_d},{lat - lat_d}"
     params = urllib.parse.urlencode({
-        "q": f"{term} near {city}", "format": "json", "limit": 50, "extratags": 1, "addressdetails": 1,
+        "q": term, "format": "json", "limit": 50, "extratags": 1, "addressdetails": 1,
+        "viewbox": viewbox, "bounded": 1,
     })
     try:
         results = http_get_json(f"{NOMINATIM_URL}?{params}")
@@ -574,12 +586,23 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
     over_fut = _SEARCH_POOL.submit(_overpass_results)
     nom_fut = _SEARCH_POOL.submit(nominatim_fallback, lat, lon, radius_miles, kind, city_hint)
     try:
-        # Head start for Overpass's richer results.
-        done, _ = concurrent.futures.wait([over_fut], timeout=6)
-        if done and over_fut.result():
-            nom_fut.cancel()
-            return centre, over_fut.result(), None
-        # Otherwise take the first usable results from either source.
+        # First usable results win. Overpass is richer when healthy; the
+        # fallback is usually faster — either way the pilot isn't left waiting
+        # on a degraded source.
+        done, _ = concurrent.futures.wait([over_fut, nom_fut], timeout=6,
+                                          return_when=concurrent.futures.FIRST_COMPLETED)
+        for fut in done:
+            try:
+                results = fut.result()
+            except Exception:
+                results = []
+            if results:
+                for other in (over_fut, nom_fut):
+                    if other is not fut:
+                        other.cancel()
+                return centre, results, None
+        # The first finisher came up empty (or nothing finished in 6s): take
+        # the first usable results from whichever finishes next.
         for fut in concurrent.futures.as_completed([over_fut, nom_fut], timeout=30):
             try:
                 results = fut.result()
