@@ -1285,6 +1285,13 @@ def login_page(error=None):
 
 @app.route("/logout")
 def logout():
+    uid = session.get("user_id")
+    if uid:
+        # Wipe the user's cached hotel/restaurant/attraction search results.
+        # Reviews, check-ins, and friends are their data and stay.
+        db = get_db()
+        db.execute("DELETE FROM search_cache WHERE user_id = ?", (uid,))
+        db.commit()
     session.clear()
     return redirect(url_for("login"))
 
