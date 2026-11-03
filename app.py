@@ -1680,24 +1680,22 @@ def area_reviews_html(db, user, checkin):
 
 
 def fbo_area_html(db, user, checkin):
-    """FBOs near the check-in: OSM search (explicit tap, then cached) plus area FBO reviews."""
+    """FBOs within 5 miles of the check-in, listed automatically (cached per check-in)."""
     if not checkin:
         return ""
-    radius = 10
-    if request.args.get("fbo_search") == "1":
+    radius = 5
+    cached = load_search_cache(user["id"], "fbo", checkin)
+    if cached and cached[0] == radius:
+        _r, centre, results = cached
+        error = None
+    else:
         centre, results, error = places_at_checkin(checkin, radius, "fbo")
         if results is not None:
             save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
-    else:
-        cached = load_search_cache(user["id"], "fbo", checkin)
-        centre, results, error = (cached[1], cached[2], None) if cached else (None, None, None)
     if results is None:
-        search_part = (f'<p class="muted">Find fixed-base operators near '
-                       f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}.</p>'
-                       f'<p><a class="btn" href="{url_for("index", fbo_search=1)}">Search FBOs in the area</a></p>')
+        search_part = '<p class="muted">Could not resolve the check-in location.</p>'
     else:
         search_part = external_results_html("fbo", (centre, results, error, radius, checkin), user)
-        search_part += f'<p><a class="muted" href="{url_for("index", fbo_search=1)}">Refresh FBO search</a></p>'
     manual = (url_for("new_review") + "?" + urllib.parse.urlencode(
         {"kind": "fbo", "airport": checkin["airport_code"] or "", "city": checkin["city"] or ""}))
     html = (f'<div class="card"><h2>FBOs in the area</h2>{search_part}'
