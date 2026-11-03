@@ -163,6 +163,15 @@ SQLITE_SCHEMA = """
         expires_at INTEGER NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER NOT NULL REFERENCES users(id),
+        recipient_id INTEGER NOT NULL REFERENCES users(id),
+        body TEXT NOT NULL,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, recipient_id);
 """
 
 POSTGRES_SCHEMA = """
@@ -236,6 +245,15 @@ POSTGRES_SCHEMA = """
         expires_at INTEGER NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        sender_id INTEGER NOT NULL REFERENCES users(id),
+        recipient_id INTEGER NOT NULL REFERENCES users(id),
+        body TEXT NOT NULL,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, recipient_id);
 """
 
 def _translate(sql):
@@ -674,6 +692,7 @@ nav a.active{background:#0369a1}
 .bnav a{flex:1;text-align:center;color:#8fa0b8;text-decoration:none;font-size:10px;min-height:48px;display:flex;flex-direction:column;justify-content:center;align-items:center}
 .bnav a .e{display:block;font-size:20px}
 .bnav a.on{color:#38bdf8;font-weight:700}
+.msgdot{display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:999px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:middle}
 .fab{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:31;width:56px;height:56px;border-radius:50%;background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;font-size:30px;line-height:54px;text-align:center;text-decoration:none;box-shadow:0 6px 18px rgba(2,132,199,.5)}
 .card{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:16px;margin:12px 0}
 input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;box-sizing:border-box;font-size:16px}
@@ -817,10 +836,20 @@ def page(title, user, body, flash=None, error=None):
                   f'document.getElementById("greet").textContent=g+", "+{first_js};}})();</script>')
         items = [("Home", url_for("index"), "🏠"), ("Hotels", url_for("hotels"), "🛏"),
                  ("Restaurants", url_for("restaurants"), "🍽"), ("Attractions", url_for("attractions"), "🎡"),
-                 ("Friends", url_for("friends"), "👥"), ("Profile", url_for("profile"), "👤")]
+                 ("Friends", url_for("friends"), "👥"), ("Messages", url_for("messages"), "💬"),
+                 ("Profile", url_for("profile"), "👤")]
+        try:
+            _unread = get_db().execute(
+                "SELECT COUNT(*) AS n FROM messages WHERE recipient_id = ? AND is_read = 0",
+                (user["id"],)).fetchone()["n"]
+        except Exception:
+            _unread = 0
+        def _label(t, e):
+            badge = f' <span class="msgdot">{_unread}</span>' if t == "Messages" and _unread else ""
+            return f'<span class="e">{e}</span>{t}{badge}'
         bnav = "".join(
             f'<a href="{u}" class="{"on" if (t == title or (t == "Profile" and title == "My Profile")) else ""}">'
-            f'<span class="e">{e}</span>{t}</a>' for t, u, e in items)
+            f'{_label(t, e)}</a>' for t, u, e in items)
         after = (f'<nav class="bnav">{bnav}</nav>'
                  f'<a href="{url_for("board")}" class="fab" aria-label="Check in">+</a>'
                  f'{MINIMAP_JS}'
@@ -2498,6 +2527,115 @@ def friends():
       {req_card}
       {add_card}"""
     return page("Friends", user, body, flash=flash, error=error)
+
+# ---------------------------------------------------------------- messages
+def _conversation_rows(user_id):
+    """All messages involving the user, newest first, with the other party's name."""
+    return get_db().execute(
+        "SELECT m.*, u.name AS other_name FROM messages m "
+        "JOIN users u ON u.id = CASE WHEN m.sender_id = ? THEN m.recipient_id ELSE m.sender_id END "
+        "WHERE m.sender_id = ? OR m.recipient_id = ? "
+        "ORDER BY m.created_at DESC, m.id DESC",
+        (user_id, user_id, user_id)).fetchall()
+
+
+@app.route("/messages", methods=["GET", "POST"])
+@login_required
+def messages():
+    """Inbox: one row per conversation, plus every registered pilot to message."""
+    user = current_user()
+    db = get_db()
+    if request.method == "POST":
+        to_id = request.form.get("to_id", type=int)
+        body = (request.form.get("body") or "").strip()
+        error = None
+        if not to_id or to_id == user["id"]:
+            error = "Pick someone to message."
+        elif not body:
+            error = "Write something first."
+        elif not db.execute("SELECT id FROM users WHERE id = ?", (to_id,)).fetchone():
+            error = "That pilot no longer exists."
+        if error:
+            return page("Messages", user, _messages_html(user, db), error=error)
+        db.execute("INSERT INTO messages (sender_id, recipient_id, body) VALUES (?,?,?)",
+                   (user["id"], to_id, body[:2000]))
+        db.commit()
+        return redirect(url_for("conversation", user_id=to_id))
+    return page("Messages", user, _messages_html(user, db))
+
+
+def _messages_html(user, db):
+    rows = _conversation_rows(user["id"])
+    convos, order = {}, []
+    for r in rows:
+        oid = r["recipient_id"] if r["sender_id"] == user["id"] else r["sender_id"]
+        if oid not in convos:
+            convos[oid] = {"name": r["other_name"], "latest": r, "unread": 0}
+            order.append(oid)
+        if r["recipient_id"] == user["id"] and not r["is_read"]:
+            convos[oid]["unread"] += 1
+    if order:
+        items = "".join(
+            f'<li><a href="{url_for("conversation", user_id=oid)}">'
+            f'<strong>{esc(convos[oid]["name"])}</strong></a>'
+            f'{" <span class=\"msgdot\">" + str(convos[oid]["unread"]) + "</span>" if convos[oid]["unread"] else ""}'
+            f'<br><span class="muted">{esc((convos[oid]["latest"]["body"] or "")[:80])}</span></li>'
+            for oid in order)
+        inbox = f'<div class="card"><h2>Conversations</h2><ul>{items}</ul></div>'
+    else:
+        inbox = '<div class="card"><h2>Conversations</h2><p class="muted">No messages yet.</p></div>'
+    others = db.execute(
+        "SELECT id, name, airline, base FROM users WHERE id != ? ORDER BY name", (user["id"],)).fetchall()
+    fresh = [o for o in others if o["id"] not in convos]
+    if fresh:
+        new_items = "".join(
+            f'<li><a href="{url_for("conversation", user_id=o["id"])}">{esc(o["name"])}</a> '
+            f'<span class="muted">· {esc(o["airline"] or "")} {esc(o["base"] or "")}</span></li>'
+            for o in fresh)
+        new_card = (f'<div class="card"><h2>Message someone new</h2>'
+                    f'<p class="muted">Anyone registered — no need to be friends first.</p>'
+                    f'<ul>{new_items}</ul></div>')
+    else:
+        new_card = ""
+    return inbox + new_card
+
+
+@app.route("/messages/<int:user_id>", methods=["GET", "POST"])
+@login_required
+def conversation(user_id):
+    """Thread with one pilot; viewing marks their messages read."""
+    user = current_user()
+    db = get_db()
+    other = db.execute("SELECT id, name FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not other or other["id"] == user["id"]:
+        return redirect(url_for("messages"))
+    if request.method == "POST":
+        body = (request.form.get("body") or "").strip()
+        if body:
+            db.execute("INSERT INTO messages (sender_id, recipient_id, body) VALUES (?,?,?)",
+                       (user["id"], other["id"], body[:2000]))
+            db.commit()
+        return redirect(url_for("conversation", user_id=other["id"]))
+    db.execute("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND recipient_id = ? AND is_read = 0",
+               (other["id"], user["id"]))
+    db.commit()
+    rows = db.execute(
+        "SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) "
+        "OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at, id",
+        (user["id"], other["id"], other["id"], user["id"])).fetchall()
+    msgs = "".join(
+        f'<div class="card" style="{"margin-left:24px" if r["sender_id"] == user["id"] else "margin-right:24px"}">'
+        f'<p style="margin:0 0 4px"><strong>{esc("You" if r["sender_id"] == user["id"] else other["name"])}</strong> '
+        f'<span class="muted">{esc(str(r["created_at"])[:16])}</span></p>'
+        f'<p style="margin:0;white-space:pre-wrap">{esc(r["body"])}</p></div>'
+        for r in rows) or '<p class="muted">No messages yet — say hello.</p>'
+    body = (f'<div class="card"><h2>{esc(other["name"])}</h2>'
+            f'<form method="post"><label>Message</label>'
+            f'<textarea name="body" rows="3" required placeholder="Write a message…"></textarea>'
+            f'<button type="submit">Send</button></form>'
+            f'<p><a href="{url_for("messages")}">Back to messages</a></p></div>'
+            f'{msgs}')
+    return page("Messages", user, body)
 
 # ---------------------------------------------------------------- PWA
 PWA_ICON_SVG = (
