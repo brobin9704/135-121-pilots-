@@ -431,7 +431,7 @@ def haversine_miles(lat1, lon1, lat2, lon2):
 
 def http_get_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=20) as resp:
+    with urllib.request.urlopen(req, timeout=12) as resp:
         import json
         return json.loads(resp.read().decode("utf-8"))
 
@@ -450,7 +450,7 @@ def geocode_place(query):
 def _overpass_one(base, data):
     import json
     req = urllib.request.Request(base, data=data, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=45) as resp:
+    with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read().decode("utf-8")).get("elements", [])
 
 def overpass_query(lat, lon, radius_miles, amenity_filter):
@@ -458,7 +458,7 @@ def overpass_query(lat, lon, radius_miles, amenity_filter):
     import concurrent.futures
     radius_m = int(radius_miles * 1609.34)
     ql = (
-        f'[out:json][timeout:30];'
+        f'[out:json][timeout:12];'
         f'(node[{amenity_filter}](around:{radius_m},{lat},{lon});'
         f'way[{amenity_filter}](around:{radius_m},{lat},{lon}););'
         f'out center tags;'
@@ -562,12 +562,19 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
 def places_at_checkin(checkin, radius_miles, kind):
     """Real OpenStreetMap results around the check-in place. No device location."""
     centre = None
-    for query in (f"{checkin['airport_code']} airport {checkin['city']}",
-                  f"{checkin['airport_code']} {checkin['city']}",
-                  checkin["city"]):
-        centre = geocode_place(query)
-        if centre:
-            break
+    # Fast path: the bundled airport dataset (~53k airports) resolves real
+    # codes to coordinates instantly — no Nominatim round-trips.
+    code = (checkin["airport_code"] or "").strip().upper()
+    if code in AIRPORT_COORDS:
+        alat, alon, acity, aname = AIRPORT_COORDS[code]
+        centre = (alat, alon, f"{aname}, {acity}")
+    else:
+        for query in (f"{checkin['airport_code']} airport {checkin['city']}",
+                      f"{checkin['airport_code']} {checkin['city']}",
+                      checkin["city"]):
+            centre = geocode_place(query)
+            if centre:
+                break
     if not centre:
         return None, None, "Could not resolve the check-in place. Check the airport code and city, then try again."
     lat, lon, display = centre
