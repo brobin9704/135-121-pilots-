@@ -2183,6 +2183,12 @@ def external_results_html(kind, data, user):
                     f'<button type="submit" style="width:auto;padding:6px 12px">Check in</button></form>')
             name_html = f'<a href="{add}"><strong>{esc(r["name"])}</strong></a>'
             action_html = f'<p><a href="{add}">Add review</a></p>{checkin_btn}'
+            # Tapping a result name shows the place on the map (new tab), like saved
+            # reviews and attractions — the Add review link is the path to the review form.
+            loc_url = ("https://www.openstreetmap.org/search?" + urllib.parse.urlencode(
+                {"query": f"{r['name']}, {place['city']}"}))
+            name_html = (f'<a href="{loc_url}" target="_blank" rel="noopener">'
+                         f'<strong>{esc(r["name"])}</strong></a>')
         cards += f"""<div class="card">{name_html} <span class="muted">{r['distance']} mi</span>
           {detail}<div>Address: {esc(r['address'])}</div><div>Phone: {esc(r['phone'])}</div>{web}
           {action_html}</div>"""
