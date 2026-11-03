@@ -81,6 +81,32 @@ RESTAURANT_TAGS = [
     "fast service", "healthy options", "good breakfast", "crew friendly",
 ]
 
+FBO_TAGS = [
+    "crew car", "fuel discount", "gpu available", "hangar space",
+    "crew lounge", "catering", "quick turn", "free wifi",
+]
+
+def _tags_for_kind(kind):
+    if kind == "restaurant":
+        return RESTAURANT_TAGS
+    if kind == "fbo":
+        return FBO_TAGS
+    return HOTEL_TAGS
+
+def _after_review_url(kind):
+    """Where to land after saving a review: FBO reviews live on Home."""
+    if kind == "hotel":
+        return url_for("hotels")
+    if kind == "restaurant":
+        return url_for("restaurants")
+    return url_for("index")
+
+def _kind_label(kind):
+    return {"fbo": "FBO"}.get(kind, kind)
+
+def _author_name(r):
+    return "Anonymous" if r["is_anonymous"] else (r["author"] or "")
+
 # Airport coordinates for the "Find me" button (server-side only; OurAirports,
 # public domain). Maps CODE -> [lat, lon, city, name].
 AIRPORT_COORDS = {}
@@ -141,11 +167,11 @@ SQLITE_SCHEMA = """
     CREATE TABLE IF NOT EXISTS reviews (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant')),
+        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant','fbo')),
         place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
         phone TEXT, address TEXT, lat REAL, lon REAL,
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
-        tags TEXT, notes TEXT,
+        tags TEXT, notes TEXT, is_anonymous INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS reports (
@@ -223,11 +249,11 @@ POSTGRES_SCHEMA = """
     CREATE TABLE IF NOT EXISTS reviews (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant')),
+        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant','fbo')),
         place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
         phone TEXT, address TEXT, lat REAL, lon REAL,
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
-        tags TEXT, notes TEXT,
+        tags TEXT, notes TEXT, is_anonymous INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS reports (
@@ -314,6 +340,10 @@ def init_db():
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS address TEXT")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS lat REAL")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS lon REAL")
+            cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_anonymous INTEGER NOT NULL DEFAULT 0")
+            # Widen the kind CHECK to include 'fbo' (auto-named reviews_kind_check).
+            cur.execute("ALTER TABLE reviews DROP CONSTRAINT IF EXISTS reviews_kind_check")
+            cur.execute("ALTER TABLE reviews ADD CONSTRAINT reviews_kind_check CHECK (kind IN ('hotel','restaurant','fbo'))")
             cur.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
             cur.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
             conn.commit()
@@ -348,6 +378,10 @@ def init_db():
                 db.execute(f"ALTER TABLE reviews ADD COLUMN {_col} {'REAL' if _col in ('lat','lon') else 'TEXT'}")
             except sqlite3.OperationalError:
                 pass  # column already exists
+        try:
+            db.execute("ALTER TABLE reviews ADD COLUMN is_anonymous INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # column already exists
         db.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
         db.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
         db.commit()
@@ -520,7 +554,7 @@ def nominatim_fallback(lat, lon, radius_miles, kind, city):
     results from the wrong place.
     """
     import math
-    term = {"hotel": "hotels", "restaurant": "restaurants"}.get(kind, "attractions")
+    term = {"hotel": "hotels", "restaurant": "restaurants", "fbo": "FBO"}.get(kind, "attractions")
     # Bounding box around the search point (a touch wider than the radius; the
     # haversine filter below does the precise cut).
     lat_d = radius_miles * 1.2 / 69.0
@@ -607,6 +641,9 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
         filt = 'tourism~"hotel|motel|guest_house|hostel"'
     elif kind == "restaurant":
         filt = 'amenity~"restaurant|cafe|fast_food"'
+    elif kind == "fbo":
+        filt = ('~"^name$"~"(FBO|Fixed Base|Jet Center|Flight Support|Million Air|'
+                'Signature Flight|Atlantic Aviation|Sheltair|TAC Air|Jet Aviation)",i')
     else:
         filt = 'tourism~"attraction|museum|gallery|zoo|aquarium|theme_park|viewpoint|artwork"'
     centre = (lat, lon, display or f"{lat:.4f}, {lon:.4f}")
@@ -995,7 +1032,7 @@ def review_card(r, user):
     code_html = (f'<a href="{url_for("airport_hub", code=code.upper())}">{esc(code)}</a>' if code
                  else '<span class="muted">—</span>')
     return f"""<div class="card"><a href="{loc_url}" target="_blank" rel="noopener"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>
-      <div class="muted">{code_html} · {esc(r['city'])} · by {esc(r['author'])}</div>
+      <div class="muted">{code_html} · {esc(r['city'])} · by {esc(_author_name(r))}</div>
       {contact}{minimap}<div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{own}{report}</div>"""
 
 def place_aggregates(rows):
@@ -1513,6 +1550,7 @@ def index():
             + upcoming_checkins_html(user)
             + LOCMAP_HTML + LOCMAP_JS
             + friends_nearby_html(db, user, checkin)
+            + fbo_area_html(db, user, checkin)
             + area_reviews_html(db, user, checkin))
     return page("Home", user, body, flash=" ".join(notes) if notes else None)
 
@@ -1638,6 +1676,41 @@ def area_reviews_html(db, user, checkin):
         html += "".join(review_card(r, user) for r in rev_rows)
     else:
         html += '<p class="muted">No pilot reviews here yet — be the first.</p></div>'
+    return html
+
+
+def fbo_area_html(db, user, checkin):
+    """FBOs near the check-in: OSM search (explicit tap, then cached) plus area FBO reviews."""
+    if not checkin:
+        return ""
+    radius = 10
+    if request.args.get("fbo_search") == "1":
+        centre, results, error = places_at_checkin(checkin, radius, "fbo")
+        if results is not None:
+            save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
+    else:
+        cached = load_search_cache(user["id"], "fbo", checkin)
+        centre, results, error = (cached[1], cached[2], None) if cached else (None, None, None)
+    if results is None:
+        search_part = (f'<p class="muted">Find fixed-base operators near '
+                       f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}.</p>'
+                       f'<p><a class="btn" href="{url_for("index", fbo_search=1)}">Search FBOs in the area</a></p>')
+    else:
+        search_part = external_results_html("fbo", (centre, results, error, radius, checkin), user)
+        search_part += f'<p><a class="muted" href="{url_for("index", fbo_search=1)}">Refresh FBO search</a></p>'
+    manual = (url_for("new_review") + "?" + urllib.parse.urlencode(
+        {"kind": "fbo", "airport": checkin["airport_code"] or "", "city": checkin["city"] or ""}))
+    html = (f'<div class="card"><h2>FBOs in the area</h2>{search_part}'
+            f'<p><a href="{manual}">Add FBO review</a> '
+            f'<span class="muted">— don\u2019t see yours? add it by name.</span></p></div>')
+    fbo_rows = db.execute(
+        """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
+           WHERE r.kind = 'fbo' AND (upper(r.airport_code) = ? OR lower(r.city) = ?)
+           ORDER BY r.created_at DESC, r.id DESC LIMIT 5""",
+        ((checkin["airport_code"] or "").upper(), (checkin["city"] or "").strip().lower())).fetchall()
+    fbo_rows = visible_reviews(fbo_rows, user)
+    if fbo_rows:
+        html += "".join(review_card(r, user) for r in fbo_rows)
     return html
 
 
@@ -1832,30 +1905,31 @@ def new_review():
     checkin = current_checkin(user["id"])
     if request.method == "POST":
         kind = request.form.get("kind", "hotel")
-        if kind not in ("hotel", "restaurant"):
+        if kind not in ("hotel", "restaurant", "fbo"):
             kind = "hotel"
         chosen = request.form.getlist("tag")
         custom = request.form.get("custom_tags", "").strip()
         tags = ", ".join([t for t in chosen] + ([custom] if custom else []))
+        anon = 1 if request.form.get("anonymous") else 0
         db = get_db()
         params = (user["id"], kind, request.form.get("place_name", "").strip(),
                   request.form.get("airport_code", "").strip().upper(), request.form.get("city", "").strip(),
                   request.form.get("phone", "").strip(), request.form.get("address", "").strip(),
                   _parse_coord(request.form.get("lat")), _parse_coord(request.form.get("lon")),
-                  int(request.form.get("rating", 5)), tags, request.form.get("notes", "").strip())
+                  int(request.form.get("rating", 5)), tags, request.form.get("notes", "").strip(), anon)
         if USE_POSTGRES:
             cur = db.execute(
-                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, lat, lon, rating, tags, notes) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id", params)
+                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, lat, lon, rating, tags, notes, is_anonymous) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id", params)
             review_id = cur.fetchone()["id"]
         else:
             cur = db.execute(
-                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, lat, lon, rating, tags, notes) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", params)
+                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, lat, lon, rating, tags, notes, is_anonymous) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", params)
             review_id = cur.lastrowid
         _save_review_photos(db, review_id, request.files.getlist("photos"))
         db.commit()
-        return redirect(url_for("hotels" if kind == "hotel" else "restaurants"))
+        return redirect(_after_review_url(kind))
     kind = request.args.get("kind", "hotel")
     place = request.args.get("place", "")
     airport = request.args.get("airport", checkin["airport_code"] if checkin else "")
@@ -1864,10 +1938,10 @@ def new_review():
     address = request.args.get("address", "")
     lat = request.args.get("lat", "")
     lon = request.args.get("lon", "")
-    tag_list = RESTAURANT_TAGS if kind == "restaurant" else HOTEL_TAGS
+    tag_list = _tags_for_kind(kind) if kind in ("hotel", "restaurant", "fbo") else HOTEL_TAGS
     boxes = "".join(
         f'<label><input type="checkbox" name="tag" value="{esc(t)}" style="width:auto"> {esc(t)}</label><br>' for t in tag_list)
-    body = f"""<div class="card"><h2>Add a {esc(kind)} review</h2>
+    body = f"""<div class="card"><h2>Add a {_kind_label(kind)} review</h2>
       <form method="post" enctype="multipart/form-data"><input type="hidden" name="kind" value="{esc(kind)}">
       <label>Place name</label><input name="place_name" value="{esc(place)}" required>
       <label>Airport code</label><input name="airport_code" value="{esc(airport)}">
@@ -1882,6 +1956,7 @@ def new_review():
       <label>Other tags (comma-separated)</label><input name="custom_tags">
       <label>Notes</label><textarea name="notes" rows="4"></textarea>
       <label>Photos (up to 5)</label><input type="file" name="photos" accept="image/*" multiple>
+      <label><input type="checkbox" name="anonymous" value="1" style="width:auto"> Post anonymously</label>
       <button type="submit">Save review</button></form></div>"""
     return page("Add review", user, body)
 
@@ -1909,7 +1984,7 @@ def _edit_review_form(vals, kind, tag_list, photo_rows):
             for p in photo_rows)
         thumbs = f"<div>{thumbs}</div>"
     remaining = 5 - len(photo_rows)
-    return f"""<div class="card"><h2>Edit {esc(kind)} review</h2>
+    return f"""<div class="card"><h2>Edit {_kind_label(kind)} review</h2>
       <form method="post" enctype="multipart/form-data">
       <label>Place name</label><input name="place_name" value="{esc(vals.get('place_name', ''))}" required>
       <label>Airport code</label><input name="airport_code" value="{esc(vals.get('airport_code', ''))}">
@@ -1924,6 +1999,7 @@ def _edit_review_form(vals, kind, tag_list, photo_rows):
       <label>Notes</label><textarea name="notes" rows="4">{esc(vals.get('notes', ''))}</textarea>
       <label>Photos (up to 5 total{f' — {remaining} more allowed' if remaining else ''})</label>{thumbs}
       <input type="file" name="photos" accept="image/*" multiple>
+      <label><input type="checkbox" name="anonymous" value="1" style="width:auto"{' checked' if vals.get('is_anonymous') else ''}> Post anonymously</label>
       <button type="submit">Save changes</button></form></div>"""
 
 
@@ -1935,8 +2011,8 @@ def edit_review(review_id):
     r = db.execute("SELECT * FROM reviews WHERE id=?", (review_id,)).fetchone()
     if not r or r["user_id"] != user["id"]:
         return "Not found", 404
-    kind = r["kind"] if r["kind"] in ("hotel", "restaurant") else "hotel"
-    tag_list = RESTAURANT_TAGS if kind == "restaurant" else HOTEL_TAGS
+    kind = r["kind"] if r["kind"] in ("hotel", "restaurant", "fbo") else "hotel"
+    tag_list = _tags_for_kind(kind)
     photo_rows = db.execute("SELECT id FROM photos WHERE review_id=? ORDER BY id", (review_id,)).fetchall()
     if request.method == "POST":
         vals = {
@@ -1953,6 +2029,7 @@ def edit_review(review_id):
         chosen = request.form.getlist("tag")
         custom = request.form.get("custom_tags", "").strip()
         vals["tags"] = ", ".join([t for t in chosen] + ([custom] if custom else []))
+        vals["is_anonymous"] = 1 if request.form.get("anonymous") else 0
         try:
             rating = int(vals["rating"])
         except (TypeError, ValueError):
@@ -1968,18 +2045,18 @@ def edit_review(review_id):
                         _edit_review_form(vals, kind, tag_list, photo_rows),
                         error=f"That would be {len(kept) + len(new_files)} photos — the limit is 5 per review.")
         db.execute(
-            "UPDATE reviews SET place_name=?, airport_code=?, city=?, phone=?, address=?, lat=?, lon=?, rating=?, tags=?, notes=? "
+            "UPDATE reviews SET place_name=?, airport_code=?, city=?, phone=?, address=?, lat=?, lon=?, rating=?, tags=?, notes=?, is_anonymous=? "
             "WHERE id=? AND user_id=?",
             (vals["place_name"], vals["airport_code"], vals["city"], vals["phone"], vals["address"],
-             vals["lat"], vals["lon"], rating, vals["tags"], vals["notes"], review_id, user["id"]))
+             vals["lat"], vals["lon"], rating, vals["tags"], vals["notes"], vals["is_anonymous"], review_id, user["id"]))
         for pid in remove_ids:
             db.execute("DELETE FROM photos WHERE id=? AND review_id=?", (pid, review_id))
         _save_review_photos(db, review_id, new_files)
         db.commit()
-        return redirect(url_for("hotels" if kind == "hotel" else "restaurants"))
+        return redirect(_after_review_url(kind))
     vals = {"place_name": r["place_name"] or "", "airport_code": r["airport_code"] or "",
             "city": r["city"] or "", "phone": r["phone"] or "", "address": r["address"] or "",
-            "lat": r["lat"], "lon": r["lon"],
+            "lat": r["lat"], "lon": r["lon"], "is_anonymous": r["is_anonymous"],
             "rating": r["rating"], "tags": r["tags"] or "", "notes": r["notes"] or ""}
     return page("Edit review", user, _edit_review_form(vals, kind, tag_list, photo_rows))
 
@@ -1993,7 +2070,7 @@ def report_review(review_id):
                    (review_id,)).fetchone()
     if not r:
         return "Not found", 404
-    back = url_for("hotels" if r["kind"] == "hotel" else "restaurants")
+    back = _after_review_url(r["kind"])
     if r["user_id"] == user["id"]:
         return redirect(back)
     if request.method == "POST":
@@ -2008,7 +2085,7 @@ def report_review(review_id):
             delattr(g, "_hidden")
         return redirect(back)
     body = f"""<div class="card"><h2>Report review</h2>
-      <p class="muted">Flag <strong>{esc(r['place_name'])}</strong> ({r['rating']}★ by {esc(r['author'])}). Reviews flagged by 3 pilots are hidden.</p>
+      <p class="muted">Flag <strong>{esc(r['place_name'])}</strong> ({r['rating']}★ by {esc(_author_name(r))}). Reviews flagged by 3 pilots are hidden.</p>
       <form method="post"><label>Reason</label><select name="reason">
       <option>Spam</option><option>Inappropriate</option><option>Inaccurate</option><option>Other</option>
       </select><button type="submit">Send report</button></form></div>"""
@@ -2166,13 +2243,14 @@ def at_location_section(kind, user, radius_options, default_radius):
 
 def external_results_html(kind, data, user):
     centre, results, error, radius, place = data
+    kind_label = _kind_label(kind)
     if error and not results:
         return f'<div class="error">{esc(error)}</div>'
     if centre:
         lat, lon, display = centre
-        header = f"<h2>{len(results)} {kind}s within {radius} mi of {esc(display)}</h2>"
+        header = f"<h2>{len(results)} {kind_label}s within {radius} mi of {esc(display)}</h2>"
     else:
-        header = f"<h2>{len(results)} {kind}s within {radius} mi</h2>"
+        header = f"<h2>{len(results)} {kind_label}s within {radius} mi</h2>"
     if not results:
         return header + '<p class="muted">No places found in that radius.</p>'
     markers = [{"lat": r["lat"], "lon": r["lon"], "name": r["name"]} for r in results
@@ -2186,6 +2264,8 @@ def external_results_html(kind, data, user):
             detail = f"<div>Brand: {esc(r['brand'] or r['name'])}</div>"
         elif kind == "restaurant":
             detail = f"<div>Cuisine: {esc(r['cuisine'])}</div><div>Hours: {esc(r['hours'])}</div>"
+        elif kind == "fbo" and r.get("brand"):
+            detail = f"<div>Brand: {esc(r['brand'])}</div>"
         elif r.get("atype"):
             detail = f"<div>Type: {esc(r['atype'])}</div>"
         web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
