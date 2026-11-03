@@ -12,6 +12,7 @@ Production: gunicorn app:app  (see Dockerfile / render.yaml)
 """
 import math
 import base64
+import concurrent.futures
 import io
 import json
 import os
@@ -65,6 +66,10 @@ OVERPASS_URLS = [
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 ]
+
+# Shared pool for racing Overpass against the Nominatim fallback. Module-level
+# so request threads are reused instead of spawned (and joined) per search.
+_SEARCH_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=6, thread_name_prefix="osm")
 
 HOTEL_TAGS = [
     "quiet rooms", "blackout curtains", "crew shuttle", "crew rate",
@@ -431,7 +436,7 @@ def haversine_miles(lat1, lon1, lat2, lon2):
 
 def http_get_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=12) as resp:
+    with urllib.request.urlopen(req, timeout=20) as resp:
         import json
         return json.loads(resp.read().decode("utf-8"))
 
@@ -450,7 +455,7 @@ def geocode_place(query):
 def _overpass_one(base, data):
     import json
     req = urllib.request.Request(base, data=data, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8")).get("elements", [])
 
 def overpass_query(lat, lon, radius_miles, amenity_filter):
@@ -458,7 +463,7 @@ def overpass_query(lat, lon, radius_miles, amenity_filter):
     import concurrent.futures
     radius_m = int(radius_miles * 1609.34)
     ql = (
-        f'[out:json][timeout:12];'
+        f'[out:json][timeout:25];'
         f'(node[{amenity_filter}](around:{radius_m},{lat},{lon});'
         f'way[{amenity_filter}](around:{radius_m},{lat},{lon}););'
         f'out center tags;'
@@ -508,23 +513,8 @@ def nominatim_fallback(lat, lon, radius_miles, kind, city):
     out.sort(key=lambda x: x["distance"])
     return out
 
-def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
-    """Real OpenStreetMap results around a coordinate pair."""
-    if kind == "hotel":
-        filt = 'tourism~"hotel|motel|guest_house|hostel"'
-    elif kind == "restaurant":
-        filt = 'amenity~"restaurant|cafe|fast_food"'
-    else:
-        filt = 'tourism~"attraction|museum|gallery|zoo|aquarium|theme_park|viewpoint|artwork"'
-    centre = (lat, lon, display or f"{lat:.4f}, {lon:.4f}")
-    try:
-        elements = overpass_query(lat, lon, radius_miles, filt)
-    except Exception:
-        # Overpass mirrors are busy: fall back to a place-type search, filtered by distance.
-        fallback = nominatim_fallback(lat, lon, radius_miles, kind, city_hint)
-        if fallback:
-            return centre, fallback, None
-        return centre, [], "Listing service is busy — try again in a moment."
+def _parse_overpass_elements(elements, clat, clon, radius_miles):
+    """Turn raw Overpass elements into the standard result dicts, nearest first."""
     seen, results = set(), []
     for el in elements:
         tags = el.get("tags", {}) or {}
@@ -539,7 +529,7 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
         if key in seen:
             continue
         seen.add(key)
-        dist = haversine_miles(lat, lon, float(elat), float(elon))
+        dist = haversine_miles(clat, clon, float(elat), float(elon))
         if dist > radius_miles + 0.05:
             continue
         street = " ".join(x for x in [tags.get("addr:housenumber"), tags.get("addr:street")] if x)
@@ -556,7 +546,51 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
             "distance": round(dist, 1),
         })
     results.sort(key=lambda r: r["distance"])
-    return centre, results, None
+    return results
+
+
+def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
+    """Real OpenStreetMap results around a coordinate pair.
+
+    Overpass and the Nominatim fallback run in parallel on a shared pool;
+    Overpass gets a short head start for its richer results, then the first
+    usable results from either source win. A slow Overpass no longer blocks
+    the fallback, and returning never waits for a straggler thread.
+    """
+    if kind == "hotel":
+        filt = 'tourism~"hotel|motel|guest_house|hostel"'
+    elif kind == "restaurant":
+        filt = 'amenity~"restaurant|cafe|fast_food"'
+    else:
+        filt = 'tourism~"attraction|museum|gallery|zoo|aquarium|theme_park|viewpoint|artwork"'
+    centre = (lat, lon, display or f"{lat:.4f}, {lon:.4f}")
+
+    def _overpass_results():
+        try:
+            return _parse_overpass_elements(overpass_query(lat, lon, radius_miles, filt), lat, lon, radius_miles)
+        except Exception:
+            return []
+
+    over_fut = _SEARCH_POOL.submit(_overpass_results)
+    nom_fut = _SEARCH_POOL.submit(nominatim_fallback, lat, lon, radius_miles, kind, city_hint)
+    try:
+        # Head start for Overpass's richer results.
+        done, _ = concurrent.futures.wait([over_fut], timeout=6)
+        if done and over_fut.result():
+            nom_fut.cancel()
+            return centre, over_fut.result(), None
+        # Otherwise take the first usable results from either source.
+        for fut in concurrent.futures.as_completed([over_fut, nom_fut], timeout=30):
+            try:
+                results = fut.result()
+            except Exception:
+                results = []
+            if results:
+                return centre, results, None
+    finally:
+        for fut in (over_fut, nom_fut):
+            fut.cancel()
+    return centre, [], "Listing service is busy — try again in a moment."
 
 
 def places_at_checkin(checkin, radius_miles, kind):
