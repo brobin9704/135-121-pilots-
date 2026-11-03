@@ -563,7 +563,9 @@ def places_at_checkin(checkin, radius_miles, kind):
 
 # ---------------------------------------------------------------- rendering
 CSS = """
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
+html{-webkit-text-size-adjust:100%}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0f172a;color:#e2e8f0;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+img{max-width:100%;height:auto}
 a{color:#7dd3fc}.wrap{max-width:760px;margin:0 auto;padding:16px}
 header{display:flex;justify-content:space-between;align-items:center;gap:12px}
 nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
@@ -571,26 +573,28 @@ nav a,.btn{background:#1e293b;color:#e2e8f0;text-decoration:none;padding:10px 14
 nav a.active{background:#0369a1}
 .topbar{display:flex;align-items:center;gap:10px;padding:12px 4px}
 .brand{font-weight:800;letter-spacing:.5px;font-size:15px}
-.appname{text-align:center;font-size:11px;letter-spacing:2px;color:#7dd3fc;font-weight:700;padding:10px 4px 0}
+.appname{text-align:center;font-size:11px;letter-spacing:2px;color:#7dd3fc;font-weight:700;padding:calc(10px + env(safe-area-inset-top)) 4px 0}
 .minimap{height:180px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
 .resultsmap{height:260px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
-.logout_link{margin-left:auto;color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:6px 12px}
+.logout_link{margin-left:auto;color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:8px 14px;min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
 .has_bnav .wrap{padding-bottom:96px}
 .bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1626;border-top:1px solid #334155;padding:8px 4px calc(10px + env(safe-area-inset-bottom))}
-.bnav a{flex:1;text-align:center;color:#8fa0b8;text-decoration:none;font-size:10px}
+.bnav a{flex:1;text-align:center;color:#8fa0b8;text-decoration:none;font-size:10px;min-height:48px;display:flex;flex-direction:column;justify-content:center;align-items:center}
 .bnav a .e{display:block;font-size:20px}
 .bnav a.on{color:#38bdf8;font-weight:700}
-.fab{position:fixed;right:16px;bottom:84px;z-index:31;width:56px;height:56px;border-radius:50%;background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;font-size:30px;line-height:54px;text-align:center;text-decoration:none;box-shadow:0 6px 18px rgba(2,132,199,.5)}
+.fab{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:31;width:56px;height:56px;border-radius:50%;background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;font-size:30px;line-height:54px;text-align:center;text-decoration:none;box-shadow:0 6px 18px rgba(2,132,199,.5)}
 .card{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:16px;margin:12px 0}
-input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;box-sizing:border-box}
-button,.btn-primary{background:#0284c7;color:#fff;border:0;padding:12px 16px;border-radius:10px;font-size:16px;cursor:pointer;width:100%}
+input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;box-sizing:border-box;font-size:16px}
+input[type="checkbox"],input[type="radio"]{width:auto;min-height:24px;min-width:24px}
+button,.btn-primary{background:#0284c7;color:#fff;border:0;padding:12px 16px;border-radius:10px;font-size:16px;cursor:pointer;width:100%;touch-action:manipulation;min-height:44px}
+form[style*="inline"] button{min-height:36px}
 label{font-weight:600}.muted{color:#94a3b8}.stars{color:#facc15;letter-spacing:2px}
 .tag{display:inline-block;background:#0f172a;border:1px solid #475569;border-radius:999px;padding:2px 10px;margin:2px;font-size:13px}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .thumbs img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid #475569}
 .flash{background:#365314;border:1px solid #65a30d;padding:10px;border-radius:10px;margin:12px 0}
 .error{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:12px 0}
-@media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}}
+@media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}.card{padding:14px}.minimap{height:160px}.resultsmap{height:220px}}
 """
 
 # Auto-fills the city when an airport code is typed on the Check-In form.
@@ -1246,7 +1250,7 @@ def login_page(error=None):
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       <title>Log in - Pilots and Crew Community</title><style>
       body{{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e2e8f0;
-        min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}}
+        min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}}
       .bg{{position:fixed;inset:0;background:url('{url_for("static", filename="login-bg.jpg")}') center/cover no-repeat}}
       .scrim{{position:fixed;inset:0;background:linear-gradient(180deg,rgba(5,9,22,.45),rgba(5,9,22,.72))}}
       .card{{position:relative;width:100%;max-width:380px;background:rgba(13,20,38,.84);
