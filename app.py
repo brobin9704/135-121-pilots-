@@ -347,6 +347,18 @@ def login_required(view):
         return view(*a, **kw)
     return wrapped
 
+@app.after_request
+def _no_private_page_cache(resp):
+    # Never let the browser keep app pages in its back-button cache:
+    # after logout, Back re-requests the page and login_required sends
+    # the user to /login instead of showing the stale logged-in page.
+    # Static assets are excluded (the service worker manages those).
+    if not request.path.startswith("/static/"):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    return resp
+
 def is_current(checkin):
     if not checkin:
         return False
