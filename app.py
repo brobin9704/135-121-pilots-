@@ -1680,7 +1680,42 @@ def area_reviews_html(db, user, checkin):
 
 
 def fbo_area_html(db, user, checkin):
-    """FBOs within 5 miles of the check-in, listed automatically (cached per check-in)."""
+    """FBOs within 5 miles of the check-in.
+
+    The OSM search lazy-loads via /fbos so Home renders instantly even when
+    the listing service is slow; FBO reviews render server-side right away.
+    """
+    if not checkin:
+        return ""
+    manual = (url_for("new_review") + "?" + urllib.parse.urlencode(
+        {"kind": "fbo", "airport": checkin["airport_code"] or "", "city": checkin["city"] or ""}))
+    html = (f'<div class="card"><h2>FBOs in the area</h2>'
+            f'<div id="fbo_live"><p class="muted">Loading FBOs\u2026</p></div>'
+            f'<p><a href="{manual}">Add FBO review</a> '
+            f'<span class="muted">— don\u2019t see yours? add it by name.</span></p></div>'
+            f'<script>(function(){{var el=document.getElementById("fbo_live");'
+            f'fetch("{url_for("fbo_list")}")'
+            f'.then(function(r){{return r.text();}})'
+            f'.then(function(t){{el.innerHTML=t;}})'
+            f'.catch(function(){{el.innerHTML=\'<p class="muted">FBO listing unavailable — pull to refresh.</p>\';}});'
+            f'}})();</script>')
+    fbo_rows = db.execute(
+        """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
+           WHERE r.kind = 'fbo' AND (upper(r.airport_code) = ? OR lower(r.city) = ?)
+           ORDER BY r.created_at DESC, r.id DESC LIMIT 5""",
+        ((checkin["airport_code"] or "").upper(), (checkin["city"] or "").strip().lower())).fetchall()
+    fbo_rows = visible_reviews(fbo_rows, user)
+    if fbo_rows:
+        html += "".join(review_card(r, user) for r in fbo_rows)
+    return html
+
+
+@app.route("/fbos")
+@login_required
+def fbo_list():
+    """FBO search fragment for the Home page (lazy-loaded; cached per check-in)."""
+    user = current_user()
+    checkin = current_checkin(user["id"])
     if not checkin:
         return ""
     radius = 5
@@ -1693,23 +1728,8 @@ def fbo_area_html(db, user, checkin):
         if results is not None:
             save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
     if results is None:
-        search_part = '<p class="muted">Could not resolve the check-in location.</p>'
-    else:
-        search_part = external_results_html("fbo", (centre, results, error, radius, checkin), user)
-    manual = (url_for("new_review") + "?" + urllib.parse.urlencode(
-        {"kind": "fbo", "airport": checkin["airport_code"] or "", "city": checkin["city"] or ""}))
-    html = (f'<div class="card"><h2>FBOs in the area</h2>{search_part}'
-            f'<p><a href="{manual}">Add FBO review</a> '
-            f'<span class="muted">— don\u2019t see yours? add it by name.</span></p></div>')
-    fbo_rows = db.execute(
-        """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
-           WHERE r.kind = 'fbo' AND (upper(r.airport_code) = ? OR lower(r.city) = ?)
-           ORDER BY r.created_at DESC, r.id DESC LIMIT 5""",
-        ((checkin["airport_code"] or "").upper(), (checkin["city"] or "").strip().lower())).fetchall()
-    fbo_rows = visible_reviews(fbo_rows, user)
-    if fbo_rows:
-        html += "".join(review_card(r, user) for r in fbo_rows)
-    return html
+        return '<p class="muted">Could not resolve the check-in location.</p>'
+    return external_results_html("fbo", (centre, results, error, radius, checkin), user, with_map=False)
 
 
 @app.route("/board", methods=["GET", "POST"])
@@ -2239,7 +2259,7 @@ def at_location_section(kind, user, radius_options, default_radius):
         card += f'<div class="error">{esc(gps_error)}</div>'
     return card, data, checkin
 
-def external_results_html(kind, data, user):
+def external_results_html(kind, data, user, with_map=True):
     centre, results, error, radius, place = data
     kind_label = _kind_label(kind)
     if error and not results:
@@ -2251,10 +2271,10 @@ def external_results_html(kind, data, user):
         header = f"<h2>{len(results)} {kind_label}s within {radius} mi</h2>"
     if not results:
         return header + '<p class="muted">No places found in that radius.</p>'
-    markers = [{"lat": r["lat"], "lon": r["lon"], "name": r["name"]} for r in results
+    markers = [ {"lat": r["lat"], "lon": r["lon"], "name": r["name"]} for r in results
                if r.get("lat") is not None and r.get("lon") is not None]
     map_html = (f'<div class="resultsmap" data-markers="{esc(json.dumps(markers))}"></div>'
-                if markers else "")
+                if markers and with_map else "")
     cards = ""
     for r in results:
         detail = ""
