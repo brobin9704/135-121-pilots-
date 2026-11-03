@@ -2589,13 +2589,13 @@ def _messages_html(user, db):
     fresh = [o for o in others if o["id"] not in convos]
     if fresh:
         new_items = "".join(
-            f'<li data-search="{esc(" ".join(p for p in [o["name"], o["airline"], o["base"]] if p))}">'
+            f'<li data-search="{esc(((o["name"] or "").split() or [""])[0])}">'
             f'<a href="{url_for("conversation", user_id=o["id"])}">{esc(o["name"])}</a> '
             f'<span class="muted">· {esc(o["airline"] or "")} {esc(o["base"] or "")}</span></li>'
             for o in fresh)
         new_card = (f'<div class="card"><h2>Message someone new</h2>'
                     f'<p class="muted">Anyone registered — no need to be friends first.</p>'
-                    f'<input id="pilot_search" placeholder="Type a pilot\u2019s name\u2026" autocomplete="off">'
+                    f'<input id="pilot_search" placeholder="Type a connection\u2019s name\u2026" autocomplete="off">'
                     f'<p class="muted" id="pilot_count"></p>'
                     f'<ul id="pilot_list">{new_items}</ul></div>'
                     f'<script>(function(){{var input=document.getElementById("pilot_search"),'
@@ -2604,7 +2604,7 @@ def _messages_html(user, db):
                     f'function filter(){{var q=input.value.trim().toLowerCase(),n=0;'
                     f'items.forEach(function(li){{var hit=q&&li.getAttribute("data-search").toLowerCase().indexOf(q)!==-1;'
                     f'li.style.display=hit?"":"none";if(hit)n++;}});'
-                    f'count.textContent=q?(n+(n===1?" match":" matches")):"Type a name to find pilots.";}}'
+                    f'count.textContent=q?(n+(n===1?" match":" matches")):"Type a name to find connections.";}}'
                     f'input.addEventListener("input",filter);filter();}})();</script>')
     else:
         new_card = ""
