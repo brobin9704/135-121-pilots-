@@ -1701,13 +1701,30 @@ def fbo_area_html(db, user, checkin):
         {"kind": "fbo", "airport": checkin["airport_code"] or "", "city": checkin["city"] or ""}))
     html = (f'<div class="card"><h2>FBOs in the area</h2>'
             f'<div id="fbo_live"><p class="muted">Loading FBOs\u2026</p></div>'
+            f'<p><button type="button" id="fbo_gps_btn" style="width:auto">Find FBOs near me</button> '
+            f'<span class="muted" id="fbo_gps_msg"></span></p>'
+            f'<p class="muted">Uses your current GPS location — one tap, used for this search only, never stored.</p>'
             f'<p><a href="{manual}">Add FBO review</a> '
             f'<span class="muted">— don\u2019t see yours? add it by name.</span></p></div>'
             f'<script>(function(){{var el=document.getElementById("fbo_live");'
+            f'function show(t){{el.innerHTML=t;}}'
             f'fetch("{url_for("fbo_list")}")'
             f'.then(function(r){{return r.text();}})'
-            f'.then(function(t){{el.innerHTML=t;}})'
-            f'.catch(function(){{el.innerHTML=\'<p class="muted">FBO listing unavailable — pull to refresh.</p>\';}});'
+            f'.then(show)'
+            f'.catch(function(){{show(\'<p class="muted">FBO listing unavailable — pull to refresh.</p>\');}});'
+            f'var btn=document.getElementById("fbo_gps_btn"),msg=document.getElementById("fbo_gps_msg");'
+            f'btn.addEventListener("click",function(){{'
+            f'if(!navigator.geolocation){{msg.textContent="Location is not available on this device.";return;}}'
+            f'msg.textContent="Getting your location\u2026";show(\'<p class="muted">Searching FBOs near you\u2026</p>\');'
+            f'navigator.geolocation.getCurrentPosition(function(pos){{'
+            f'msg.textContent="";'
+            f'fetch("{url_for("fbo_list")}?lat="+pos.coords.latitude+"&lon="+pos.coords.longitude)'
+            f'.then(function(r){{return r.text();}}).then(show)'
+            f'.catch(function(){{show(\'<p class="muted">Search failed — try again.</p>\');}});'
+            f'}},function(){{'
+            f'msg.textContent="Location unavailable — allow location access for this site and try again.";'
+            f'}},{{timeout:15000,maximumAge:60000}});'
+            f'}});'
             f'}})();</script>')
     fbo_rows = db.execute(
         """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
@@ -1727,6 +1744,8 @@ def fbo_list():
 
     Anchored tightly to the check-in airport (2 mi) — FBOs are on the field,
     so a broad radius just adds noise and query cost.
+    ?lat=&lon= searches around a one-time GPS fix instead (never stored);
+    the nearest airport supplies the Add-review context.
     Failed searches are NOT cached, so the list retries on the next Home
     visit and fills in on its own once the listing service recovers.
     """
@@ -1735,6 +1754,22 @@ def fbo_list():
     if not checkin:
         return ""
     radius = 2
+    lat_arg, lon_arg = request.args.get("lat"), request.args.get("lon")
+    if lat_arg and lon_arg:
+        try:
+            glat, glon = float(lat_arg), float(lon_arg)
+            if not (-90 <= glat <= 90 and -180 <= glon <= 180):
+                raise ValueError
+        except (TypeError, ValueError):
+            return '<p class="muted">Could not read your location.</p>'
+        code, city, _name, _dist = nearest_airport_for(glat, glon)
+        centre, results, error = places_at_coords(
+            glat, glon, radius, "fbo", display="your current location", city_hint=city or "")
+        place = {"airport_code": code or "", "city": city or ""}
+        if error and not results:
+            return ('<p class="muted">The FBO directory is temporarily unavailable '
+                    '(map service is slow right now) — try again in a moment.</p>')
+        return external_results_html("fbo", (centre, results, error, radius, place), user, with_map=False)
     cached = load_search_cache(user["id"], "fbo", checkin)
     if cached and cached[0] == radius:
         _r, centre, results = cached
