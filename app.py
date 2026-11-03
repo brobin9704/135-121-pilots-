@@ -1717,6 +1717,8 @@ def fbo_area_html(db, user, checkin):
 def fbo_list():
     """FBO search fragment for the Home page (lazy-loaded; cached per check-in).
 
+    Anchored tightly to the check-in airport (2 mi) — FBOs are on the field,
+    so a broad radius just adds noise and query cost.
     Failed searches are NOT cached, so the list retries on the next Home
     visit and fills in on its own once the listing service recovers.
     """
@@ -1724,7 +1726,7 @@ def fbo_list():
     checkin = current_checkin(user["id"])
     if not checkin:
         return ""
-    radius = 5
+    radius = 2
     cached = load_search_cache(user["id"], "fbo", checkin)
     if cached and cached[0] == radius:
         _r, centre, results = cached
