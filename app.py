@@ -1737,13 +1737,53 @@ def fbo_area_html(db, user, checkin):
     return html
 
 
+def airnav_fbos(airport_code):
+    """FBOs at a US airport from AirNav (fast, reliable; OSM has sparse FBO data).
+
+    Returns (list of {name, phone}, error). Empty list (no error) means the
+    airport page loaded but listed no FBOs.
+    """
+    import re
+    code = (airport_code or "").strip().upper()
+    if not code:
+        return [], "no airport code"
+    url = f"https://www.airnav.com/airport/{code}"
+    req = urllib.request.Request(url, headers={"User-Agent": "PilotCrewCommunity/1.0 (pilot FBO directory)"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            h = r.read().decode("utf-8", "ignore")
+    except Exception as e:
+        return None, str(e)[:100]
+    start = h.find("FBO, Fuel Providers")
+    if start == -1:
+        return [], "no FBO section"
+    section = h[start:start + 40000]
+    seen = {}
+    for m in re.finditer(r"/airport/" + re.escape(code) + r"/([A-Z0-9_]{2,})", section):
+        fcode = m.group(1)
+        if fcode in seen:
+            continue
+        ahead = section[m.end():m.end() + 600]
+        alt_m = re.search(r'alt="([^"]+)"', ahead)
+        if not alt_m:
+            continue
+        name = alt_m.group(1).strip()
+        if not name or "Add a business" in name or "://" in name:
+            continue
+        phone_m = re.search(r"(\d{3}-\d{3}-\d{4})", ahead)
+        phone = phone_m.group(1) if phone_m else ""
+        seen[fcode] = {"name": name, "phone": phone}
+    return list(seen.values()), None
+
+
 @app.route("/fbos")
 @login_required
 def fbo_list():
     """FBO search fragment for the Home page (lazy-loaded; cached per check-in).
 
-    Anchored tightly to the check-in airport (2 mi) — FBOs are on the field,
-    so a broad radius just adds noise and query cost.
+    Primary source is AirNav (real FBO directory for US airports, fast).
+    Falls back to the OSM name search when AirNav has nothing.
+    Anchored tightly to the check-in airport (2 mi) — FBOs are on the field.
     ?lat=&lon= searches around a one-time GPS fix instead (never stored);
     the nearest airport supplies the Add-review context.
     Failed searches are NOT cached, so the list retries on the next Home
@@ -1763,6 +1803,15 @@ def fbo_list():
         except (TypeError, ValueError):
             return '<p class="muted">Could not read your location.</p>'
         code, city, _name, _dist = nearest_airport_for(glat, glon)
+        # GPS "near me": AirNav for the nearest airport, else OSM.
+        fbos, _err = airnav_fbos(code) if code else (None, "no airport")
+        if fbos:
+            results = [{"name": f["name"], "brand": "", "lat": None, "lon": None,
+                        "address": "", "phone": f["phone"], "website": "", "cuisine": "",
+                        "hours": "", "atype": "", "distance": 0.0} for f in fbos]
+            place = {"airport_code": code or "", "city": city or ""}
+            centre = (glat, glon, "your current location")
+            return external_results_html("fbo", (centre, results, None, radius, place), user, with_map=False)
         centre, results, error = places_at_coords(
             glat, glon, radius, "fbo", display="your current location", city_hint=city or "")
         place = {"airport_code": code or "", "city": city or ""}
@@ -1773,11 +1822,24 @@ def fbo_list():
     cached = load_search_cache(user["id"], "fbo", checkin)
     if cached and cached[0] == radius:
         _r, centre, results = cached
-        error = None
-    else:
-        centre, results, error = places_at_checkin(checkin, radius, "fbo")
-        if results is not None and not error:
-            save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
+        return external_results_html("fbo", (centre, results, None, radius, checkin), user, with_map=False)
+    # Check-in airport: AirNav first (real FBO data), OSM fallback.
+    fbos, _err = airnav_fbos(checkin["airport_code"])
+    if fbos:
+        results = [{"name": f["name"], "brand": "", "lat": None, "lon": None,
+                    "address": "", "phone": f["phone"], "website": "", "cuisine": "",
+                    "hours": "", "atype": "", "distance": 0.0} for f in fbos]
+        centre = None
+        # Centre display for the header.
+        code = (checkin["airport_code"] or "").strip().upper()
+        if code in AIRPORT_COORDS:
+            _lat, _lon, _city, _name = AIRPORT_COORDS[code]
+            centre = (_lat, _lon, f"{_name}, {_city}")
+        save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
+        return external_results_html("fbo", (centre, results, None, radius, checkin), user, with_map=False)
+    centre, results, error = places_at_checkin(checkin, radius, "fbo")
+    if results is not None and not error:
+        save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
     if results is None:
         return '<p class="muted">Could not resolve the check-in location.</p>'
     if error and not results:
