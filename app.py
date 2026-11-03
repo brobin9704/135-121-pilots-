@@ -1690,13 +1690,39 @@ def area_reviews_html(db, user, checkin):
 
 
 def fbo_area_html(db, user, checkin):
-    """FBOs within 5 miles of the check-in.
+    """FBOs in the area.
 
-    The OSM search lazy-loads via /fbos so Home renders instantly even when
-    the listing service is slow; FBO reviews render server-side right away.
+    With a check-in: auto-searches the check-in airport (3 mi) via /fbos,
+    lazy-loaded so Home renders instantly. Without a check-in: shows the
+    GPS "near me" button so pilots can still find FBOs.
+    FBO reviews render server-side right away in both cases.
     """
     if not checkin:
-        return ""
+        gps_url = url_for("fbo_list")
+        return (
+            '<div class="card"><h2>FBOs in the area</h2>'
+            '<div id="fbo_live"><p class="muted">Check in or use GPS to find FBOs near you.</p></div>'
+            '<p><button type="button" id="fbo_gps_btn" style="width:auto">Find FBOs near me</button> '
+            '<span class="muted" id="fbo_gps_msg"></span></p>'
+            '<p class="muted">Uses your current GPS location — one tap, used for this search only, never stored.</p></div>'
+            '<script>(function(){var el=document.getElementById("fbo_live");'
+            'function show(t){el.innerHTML=t;}'
+            'var btn=document.getElementById("fbo_gps_btn"),msg=document.getElementById("fbo_gps_msg");'
+            'btn.addEventListener("click",function(){'
+            'if(!navigator.geolocation){msg.textContent="Location is not available on this device.";return;}'
+            'msg.textContent="Getting your location...";'
+            'show("<p class=\\"muted\\">Searching FBOs near you...</p>");'
+            'navigator.geolocation.getCurrentPosition(function(pos){'
+            'msg.textContent="";'
+            'fetch("' + gps_url + '?lat="+pos.coords.latitude+"&lon="+pos.coords.longitude)'
+            '.then(function(r){return r.text();}).then(show)'
+            '.catch(function(){show("<p class=\\"muted\\">Search failed - try again.</p>");});'
+            '},function(){'
+            'msg.textContent="Location unavailable - allow location access for this site and try again.";'
+            '},{timeout:15000,maximumAge:60000});'
+            '});'
+            '})();</script>'
+        )
     manual = (url_for("new_review") + "?" + urllib.parse.urlencode(
         {"kind": "fbo", "airport": checkin["airport_code"] or "", "city": checkin["city"] or ""}))
     html = (f'<div class="card"><h2>FBOs in the area</h2>'
@@ -1796,8 +1822,6 @@ def fbo_list():
     """
     user = current_user()
     checkin = current_checkin(user["id"])
-    if not checkin:
-        return ""
     radius = 3
     lat_arg, lon_arg = request.args.get("lat"), request.args.get("lon")
     if lat_arg and lon_arg:
@@ -1809,6 +1833,7 @@ def fbo_list():
             return '<p class="muted">Could not read your location.</p>'
         code, city, _name, _dist = nearest_airport_for(glat, glon)
         # GPS "near me": AirNav for the nearest airport, else OSM.
+        # Works without a check-in — uses the current GPS fix.
         fbos, _err = airnav_fbos(code) if code else (None, "no airport")
         if fbos is not None:
             results = [{"name": f["name"], "brand": "", "lat": None, "lon": None,
@@ -1824,6 +1849,8 @@ def fbo_list():
             return ('<p class="muted">The FBO directory is temporarily unavailable '
                     '(map service is slow right now) — try again in a moment.</p>')
         return external_results_html("fbo", (centre, results, error, radius, place), user, with_map=False)
+    if not checkin:
+        return ""
     cached = load_search_cache(user["id"], "fbo", checkin)
     if cached and cached[0] == radius:
         _r, centre, results = cached
