@@ -1698,38 +1698,11 @@ def fbo_area_html(db, user, checkin):
     FBO reviews render server-side right away in both cases.
     """
     if not checkin:
-        gps_url = url_for("fbo_list")
-        return (
-            '<div class="card"><h2>FBOs in the area</h2>'
-            '<div id="fbo_live"><p class="muted">Check in or use GPS to find FBOs near you.</p></div>'
-            '<p><button type="button" id="fbo_gps_btn" style="width:auto">Find FBOs near me</button> '
-            '<span class="muted" id="fbo_gps_msg"></span></p>'
-            '<p class="muted">Uses your current GPS location — one tap, used for this search only, never stored.</p></div>'
-            '<script>(function(){var el=document.getElementById("fbo_live");'
-            'function show(t){el.innerHTML=t;}'
-            'var btn=document.getElementById("fbo_gps_btn"),msg=document.getElementById("fbo_gps_msg");'
-            'btn.addEventListener("click",function(){'
-            'if(!navigator.geolocation){msg.textContent="Location is not available on this device.";return;}'
-            'msg.textContent="Getting your location...";'
-            'show("<p class=\\"muted\\">Searching FBOs near you...</p>");'
-            'navigator.geolocation.getCurrentPosition(function(pos){'
-            'msg.textContent="";'
-            'fetch("' + gps_url + '?lat="+pos.coords.latitude+"&lon="+pos.coords.longitude)'
-            '.then(function(r){return r.text();}).then(show)'
-            '.catch(function(){show("<p class=\\"muted\\">Search failed - try again.</p>");});'
-            '},function(){'
-            'msg.textContent="Location unavailable - allow location access for this site and try again.";'
-            '},{timeout:15000,maximumAge:60000});'
-            '});'
-            '})();</script>'
-        )
+        return ""
     manual = (url_for("new_review") + "?" + urllib.parse.urlencode(
         {"kind": "fbo", "airport": checkin["airport_code"] or "", "city": checkin["city"] or ""}))
     html = (f'<div class="card"><h2>FBOs in the area</h2>'
             f'<div id="fbo_live"><p class="muted">Loading FBOs\u2026</p></div>'
-            f'<p><button type="button" id="fbo_gps_btn" style="width:auto">Find FBOs near me</button> '
-            f'<span class="muted" id="fbo_gps_msg"></span></p>'
-            f'<p class="muted">Uses your current GPS location — one tap, used for this search only, never stored.</p>'
             f'<p><a href="{manual}">Add FBO review</a> '
             f'<span class="muted">— don\u2019t see yours? add it by name.</span></p></div>'
             f'<script>(function(){{var el=document.getElementById("fbo_live");'
@@ -1738,19 +1711,6 @@ def fbo_area_html(db, user, checkin):
             f'.then(function(r){{return r.text();}})'
             f'.then(show)'
             f'.catch(function(){{show(\'<p class="muted">FBO listing unavailable — pull to refresh.</p>\');}});'
-            f'var btn=document.getElementById("fbo_gps_btn"),msg=document.getElementById("fbo_gps_msg");'
-            f'btn.addEventListener("click",function(){{'
-            f'if(!navigator.geolocation){{msg.textContent="Location is not available on this device.";return;}}'
-            f'msg.textContent="Getting your location\u2026";show(\'<p class="muted">Searching FBOs near you\u2026</p>\');'
-            f'navigator.geolocation.getCurrentPosition(function(pos){{'
-            f'msg.textContent="";'
-            f'fetch("{url_for("fbo_list")}?lat="+pos.coords.latitude+"&lon="+pos.coords.longitude)'
-            f'.then(function(r){{return r.text();}}).then(show)'
-            f'.catch(function(){{show(\'<p class="muted">Search failed — try again.</p>\');}});'
-            f'}},function(){{'
-            f'msg.textContent="Location unavailable — allow location access for this site and try again.";'
-            f'}},{{timeout:15000,maximumAge:60000}});'
-            f'}});'
             f'}})();</script>')
     fbo_rows = db.execute(
         """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
