@@ -275,6 +275,11 @@ def init_db():
         conn = psycopg2.connect(DATABASE_URL)
         try:
             cur = conn.cursor()
+            # Gunicorn boots 2 workers, each running init_db() concurrently.
+            # Serialize the DDL so two workers can't race creating a new
+            # table's SERIAL sequence (UniqueViolation on pg_class).
+            # xact lock releases automatically on commit.
+            cur.execute("SELECT pg_advisory_xact_lock(987654321)")
             cur.execute(POSTGRES_SCHEMA)
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS place_name TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS kind TEXT")
