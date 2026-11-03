@@ -2602,7 +2602,7 @@ def _messages_html(user, db):
                     f'items=document.querySelectorAll("#pilot_list li"),'
                     f'count=document.getElementById("pilot_count");'
                     f'function filter(){{var q=input.value.trim().toLowerCase(),n=0;'
-                    f'items.forEach(function(li){{var hit=q&&li.getAttribute("data-search").toLowerCase().indexOf(q)!==-1;'
+                    f'items.forEach(function(li){{var hit=q&&li.getAttribute("data-search").toLowerCase().indexOf(q)===0;'
                     f'li.style.display=hit?"":"none";if(hit)n++;}});'
                     f'count.textContent=q?(n+(n===1?" match":" matches")):"Type a name to find connections.";}}'
                     f'input.addEventListener("input",filter);filter();}})();</script>')
