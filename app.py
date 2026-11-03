@@ -1783,7 +1783,7 @@ def fbo_list():
 
     Primary source is AirNav (real FBO directory for US airports, fast).
     Falls back to the OSM name search when AirNav has nothing.
-    Anchored tightly to the check-in airport (2 mi) — FBOs are on the field.
+    Anchored tightly to the check-in airport (3 mi) — FBOs are on the field.
     ?lat=&lon= searches around a one-time GPS fix instead (never stored);
     the nearest airport supplies the Add-review context.
     Failed searches are NOT cached, so the list retries on the next Home
@@ -1793,7 +1793,7 @@ def fbo_list():
     checkin = current_checkin(user["id"])
     if not checkin:
         return ""
-    radius = 2
+    radius = 3
     lat_arg, lon_arg = request.args.get("lat"), request.args.get("lon")
     if lat_arg and lon_arg:
         try:
