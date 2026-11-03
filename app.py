@@ -1715,7 +1715,7 @@ def fbo_area_html(db, user, checkin):
         else:
             results = [{"name": f["name"], "brand": "", "lat": None, "lon": None,
                         "address": "", "phone": f["phone"], "website": "", "cuisine": "",
-                        "hours": "", "atype": "", "distance": 0.0} for f in fbos]
+                        "hours": "", "atype": "", "distance": 0.0, "logo": f.get("logo", "")} for f in fbos]
             centre = None
             code = (checkin["airport_code"] or "").strip().upper()
             if code in AIRPORT_COORDS:
@@ -1781,7 +1781,17 @@ def airnav_fbos(airport_code):
             continue
         phone_m = re.search(r"(\d{3}-\d{3}-\d{4})", ahead)
         phone = phone_m.group(1) if phone_m else ""
-        seen[fcode] = {"name": name, "phone": phone}
+        # Logo: IMG src (make absolute). Not all FBOs have one.
+        logo = ""
+        img_m = re.search(r'<IMG[^>]*src="([^"]+)"', ahead)
+        if img_m:
+            logo = img_m.group(1)
+            if logo.startswith("//"):
+                logo = "https:" + logo
+            # Skip spacer/pixel images
+            if "1dot.gif" in logo or "width=1" in ahead[ahead.find(logo)-50:ahead.find(logo)]:
+                logo = ""
+        seen[fcode] = {"name": name, "phone": phone, "logo": logo}
     return list(seen.values()), None
 
 
@@ -1816,7 +1826,7 @@ def fbo_list():
         if fbos is not None:
             results = [{"name": f["name"], "brand": "", "lat": None, "lon": None,
                         "address": "", "phone": f["phone"], "website": "", "cuisine": "",
-                        "hours": "", "atype": "", "distance": 0.0} for f in fbos]
+                        "hours": "", "atype": "", "distance": 0.0, "logo": f.get("logo", "")} for f in fbos]
             place = {"airport_code": code or "", "city": city or ""}
             centre = (glat, glon, "your current location")
             return external_results_html("fbo", (centre, results, None, radius, place), user, with_map=False)
@@ -1840,7 +1850,7 @@ def fbo_list():
         # Don't fall back to the slow OSM search when AirNav says none.
         results = [{"name": f["name"], "brand": "", "lat": None, "lon": None,
                     "address": "", "phone": f["phone"], "website": "", "cuisine": "",
-                    "hours": "", "atype": "", "distance": 0.0} for f in fbos]
+                    "hours": "", "atype": "", "distance": 0.0, "logo": f.get("logo", "")} for f in fbos]
         centre = None
         code = (checkin["airport_code"] or "").strip().upper()
         if code in AIRPORT_COORDS:
@@ -2450,6 +2460,7 @@ def external_results_html(kind, data, user, with_map=True):
             name_html = (f'<a href="{loc_url}" target="_blank" rel="noopener">'
                          f'<strong>{esc(r["name"])}</strong></a>')
         cards += f"""<div class="card">{name_html} <span class="muted">{r['distance']} mi</span>
+          {f'<div><img src="{esc(r["logo"])}" alt="{esc(r["name"])} logo" style="max-width:200px;max-height:60px;margin:8px 0"></div>' if r.get("logo") else ""}
           {detail}<div>Address: {esc(r['address'])}</div><div>Phone: {esc(r['phone'])}</div>{web}
           {action_html}</div>"""
     return header + map_html + cards
