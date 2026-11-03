@@ -369,10 +369,26 @@ def is_current(checkin):
         return False
     if checkin["checked_out"]:
         return False
+    today = date.today().isoformat()
+    start = checkin["start_date"]
+    if start and start > today:
+        return False
     end = checkin["end_date"]
-    if end and end < date.today().isoformat():
+    if end and end < today:
         return False
     return True
+
+def is_upcoming(checkin):
+    """A check-in whose start date is in the future (not checked out)."""
+    if not checkin or checkin["checked_out"]:
+        return False
+    start = checkin["start_date"]
+    return bool(start) and start > date.today().isoformat()
+
+def upcoming_checkins(user_id):
+    rows = get_db().execute(
+        "SELECT * FROM checkins WHERE user_id = ? ORDER BY start_date, id", (user_id,)).fetchall()
+    return [r for r in rows if is_upcoming(r)]
 
 def current_checkin(user_id):
     rows = get_db().execute(
@@ -1465,6 +1481,7 @@ def index():
     checkin = current_checkin(user["id"])
     notes = get_flashed_messages()
     body = (current_checkin_html(checkin)
+            + upcoming_checkins_html(user)
             + LOCMAP_HTML + LOCMAP_JS
             + friends_nearby_html(db, user, checkin)
             + area_reviews_html(db, user, checkin))
@@ -1511,6 +1528,22 @@ def _slot_checkout_form(slot, label):
             f'onsubmit="return confirm(\'Check out of this {label}?\')">'
             f'<input type="hidden" name="slot" value="{slot}">'
             f'<button type="submit" style="width:auto;padding:4px 10px">Check out</button></form>')
+
+
+def upcoming_checkins_html(user):
+    """Card listing the user's future-dated check-ins, with edit/cancel."""
+    rows = upcoming_checkins(user["id"])
+    if not rows:
+        return ""
+    items = "".join(
+        f"<li>{checkin_label(r)} <span class='muted'>— {esc(r['start_date'])} to {esc(r['end_date'] or 'open')}</span> "
+        f"<a href=\"{url_for('edit_checkin', id=r['id'])}\">Edit</a> "
+        f"<form method=\"post\" action=\"{url_for('cancel_checkin')}\" style=\"display:inline\" "
+        f"onsubmit=\"return confirm('Cancel this upcoming check-in?')\">"
+        f"<input type=\"hidden\" name=\"id\" value=\"{r['id']}\">"
+        f"<button type=\"submit\" style=\"width:auto;padding:4px 10px;background:#7f1d1d\">Cancel</button></form></li>"
+        for r in rows)
+    return f'<div class="card"><h2>Upcoming check-ins</h2><ul>{items}</ul></div>'
 
 
 def current_checkin_html(checkin):
@@ -1615,32 +1648,40 @@ def board():
         db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
                    (user["id"], code, city.strip().lower()))
         db.commit()
-        # Friend nearby alerts: flash + email to friends checked in at the same place.
-        buds = []
-        for fr in db.execute(
-                "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?",
-                (user["id"],)).fetchall():
-            fc = current_checkin(fr["id"])
-            if fc and (fc["airport_code"].upper() == code
-                       or fc["city"].strip().lower() == city.strip().lower()):
-                buds.append(fr)
-        if buds:
-            names = ", ".join(fr["name"] for fr in buds)
-            flask_flash(f"👥 {names} {'is' if len(buds) == 1 else 'are'} also checked in at {code} / {city}.")
-            for fr in buds:
-                send_email(fr["email"], f"{user['name']} checked in at {code} / {city}",
-                           f"{user['name']} just checked in at {code} / {city}, where you are checked in too.\n\n"
-                           "Open Pilot & Crew Community to say hi.")
+        # Friend nearby alerts go out only for a check-in that starts today —
+        # a future-dated check-in stays silent until its date arrives.
+        if start <= date.today().isoformat():
+            buds = []
+            for fr in db.execute(
+                    "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?",
+                    (user["id"],)).fetchall():
+                fc = current_checkin(fr["id"])
+                if fc and (fc["airport_code"].upper() == code
+                           or fc["city"].strip().lower() == city.strip().lower()):
+                    buds.append(fr)
+            if buds:
+                names = ", ".join(fr["name"] for fr in buds)
+                flask_flash(f"👥 {names} {'is' if len(buds) == 1 else 'are'} also checked in at {code} / {city}.")
+                for fr in buds:
+                    send_email(fr["email"], f"{user['name']} checked in at {code} / {city}",
+                               f"{user['name']} just checked in at {code} / {city}, where you are checked in too.\n\n"
+                               "Open Pilot & Crew Community to say hi.")
+        else:
+            flask_flash(f"Check-in saved for {start} — it will become your current check-in on that date.")
         return redirect(url_for("index"))
     if request.method == "POST" and request.form.get("action") == "checkout":
-        db.execute("UPDATE checkins SET checked_out = 1 WHERE user_id = ? AND checked_out = 0", (user["id"],))
+        cur = current_checkin(user["id"])
+        if cur:
+            db.execute("UPDATE checkins SET checked_out = 1 WHERE id = ?", (cur["id"],))
         db.commit()
         flash = "Checked out."
     checkin = current_checkin(user["id"])
-    # Check-in history: everything except the current check-in, newest first.
+    # Check-in history: past check-ins only (upcoming ones get their own card).
     all_rows = db.execute(
         "SELECT * FROM checkins WHERE user_id=? ORDER BY created_at DESC, id DESC", (user["id"],)).fetchall()
-    past = [r for r in all_rows if not checkin or r["id"] != checkin["id"]]
+    upcoming_ids = {r["id"] for r in all_rows if is_upcoming(r)}
+    past = [r for r in all_rows
+            if r["id"] not in upcoming_ids and (not checkin or r["id"] != checkin["id"])]
     if past:
         items = "".join(
             f"<li>{checkin_label(r)} <span class='muted'>— {esc(r['start_date'])} to {esc(r['end_date'] or 'open')}</span></li>"
@@ -1651,12 +1692,13 @@ def board():
     body = f"""
       <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
-      <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + '?')"><input type="hidden" name="action" value="checkin">
+      <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + ' on ' + document.getElementsByName('start_date')[0].value + '?')"><input type="hidden" name="action" value="checkin">
       <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
-      <label>City</label><input id="city" name="city" placeholder="Tulsa" required>
+      <label>City</label><input name="city" id="city" placeholder="Tulsa" required>
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
       <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
+      {upcoming_checkins_html(user)}
       {friends_nearby_html(db, user, checkin)}{area_reviews_html(db, user, checkin)}{history_html}"""
     return page("Check-In", user, body, flash=flash)
 
@@ -1686,10 +1728,17 @@ def checkout_place():
 @app.route("/checkin/edit", methods=["GET", "POST"])
 @login_required
 def edit_checkin():
-    """Edit the current check-in: airport, city, hotel/restaurant places, dates."""
+    """Edit the current check-in, or an upcoming one via ?id=."""
     user = current_user()
     db = get_db()
-    checkin = current_checkin(user["id"])
+    cid = request.values.get("id", type=int)
+    if cid:
+        checkin = db.execute(
+            "SELECT * FROM checkins WHERE id=? AND user_id=?", (cid, user["id"])).fetchone()
+        if not checkin or checkin["checked_out"] or not (is_current(checkin) or is_upcoming(checkin)):
+            return redirect(url_for("board"))
+    else:
+        checkin = current_checkin(user["id"])
     if not checkin:
         return redirect(url_for("board"))
     if request.method == "POST":
@@ -1712,6 +1761,7 @@ def edit_checkin():
     body = f"""
       <div class="card"><h2>Edit check-in</h2>
       <form method="post">
+      <input type="hidden" name="id" value="{checkin['id']}">
       <label>Airport code</label><input name="airport_code" value="{esc(checkin['airport_code'] or '')}" required>
       <label>City</label><input name="city" value="{esc(checkin['city'] or '')}" required>
       <label>Hotel</label><input name="hotel_place" value="{esc(checkin['hotel_place'] or '')}" placeholder="Hotel (optional)">
@@ -1721,6 +1771,23 @@ def edit_checkin():
       <button type="submit">Save changes</button></form>
       <p><a href="{url_for('index')}">Cancel</a></p></div>"""
     return page("Edit check-in", user, body)
+
+
+@app.route("/checkin/cancel", methods=["POST"])
+@login_required
+def cancel_checkin():
+    """Cancel an upcoming (future-dated) check-in. Ownership and upcoming status enforced."""
+    user = current_user()
+    db = get_db()
+    cid = request.form.get("id", type=int)
+    if cid:
+        checkin = db.execute(
+            "SELECT * FROM checkins WHERE id=? AND user_id=?", (cid, user["id"])).fetchone()
+        if checkin and is_upcoming(checkin):
+            db.execute("DELETE FROM checkins WHERE id=?", (cid,))
+            db.commit()
+            flask_flash("Upcoming check-in cancelled.")
+    return redirect(url_for("index"))
 
 # ---------------------------------------------------------------- reviews
 def _parse_coord(val):
