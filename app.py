@@ -151,6 +151,13 @@ SQLITE_SCHEMA = """
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE(review_id, reporter_id)
     );
+    CREATE TABLE IF NOT EXISTS password_resets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
 """
 
 POSTGRES_SCHEMA = """
@@ -216,6 +223,13 @@ POSTGRES_SCHEMA = """
         reason TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         UNIQUE(review_id, reporter_id)
+    );
+    CREATE TABLE IF NOT EXISTS password_resets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 """
 
@@ -991,6 +1005,85 @@ def login():
         return login_page(error="Email or password did not match.")
     return login_page()
 
+def _hash_reset_token(token):
+    import hashlib
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    """Email a one-hour, single-use password reset link."""
+    if request.method == "POST":
+        import secrets, time
+        email = request.form.get("email", "").strip().lower()
+        db = get_db()
+        db.execute("DELETE FROM password_resets WHERE expires_at <= ?", (int(time.time()),))
+        db.commit()
+        user = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        if user:
+            db.execute("DELETE FROM password_resets WHERE user_id = ?", (user["id"],))
+            token = secrets.token_urlsafe(32)
+            db.execute("INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?,?,?)",
+                       (user["id"], _hash_reset_token(token), int(time.time()) + 3600))
+            db.commit()
+            link = request.host_url.rstrip("/") + url_for("reset_password", token=token)
+            sent = send_email(email, "Reset your Pilots and Crew Community password",
+                              f"Hi {user['name']},\n\nSomeone asked to reset the password for this account.\n\n"
+                              f"Reset it here (valid 1 hour, one-time use):\n{link}\n\n"
+                              "If that wasn't you, just ignore this email.")
+            if not sent:
+                return page("Forgot password", None,
+                            '<div class="card"><h2>Forgot password</h2>'
+                            '<p class="error">Could not send the reset email right now. Try again later.</p>'
+                            f'<p><a href="{url_for("login")}">Back to log in</a></p></div>')
+        # Same message whether or not the email is registered.
+        return page("Forgot password", None,
+                    '<div class="card"><h2>Check your email</h2>'
+                    '<p>If that email is registered, a reset link is on its way (valid 1 hour).</p>'
+                    f'<p><a href="{url_for("login")}">Back to log in</a></p></div>')
+    return page("Forgot password", None,
+                f"""<div class="card"><h2>Forgot password</h2>
+                <p class="muted">Enter your account email and we'll send you a reset link.</p>
+                <form method="post"><label>Email</label>
+                <input type="email" name="email" required autocomplete="email">
+                <button type="submit">Send reset link</button></form>
+                <p><a href="{url_for("login")}">Back to log in</a></p></div>""")
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    """Consume a reset token and set a new password."""
+    import time
+    db = get_db()
+    db.execute("DELETE FROM password_resets WHERE expires_at <= ?", (int(time.time()),))
+    db.commit()
+    row = db.execute("SELECT * FROM password_resets WHERE token_hash = ?",
+                     (_hash_reset_token(token),)).fetchone()
+    if not row:
+        return page("Reset password", None,
+                    '<div class="card"><h2>Link expired</h2>'
+                    '<p class="muted">That reset link is invalid or expired. Request a new one.</p>'
+                    f'<p><a href="{url_for("forgot_password")}">Forgot password</a></p></div>')
+    if request.method == "POST":
+        new = request.form.get("new_password", "")
+        if len(new) < 8:
+            return page("Reset password", None,
+                        '<div class="card"><h2>Choose a new password</h2>'
+                        '<p class="error">Password must be at least 8 characters.</p>'
+                        '<form method="post"><label>New password</label>'
+                        '<input type="password" name="new_password" required autocomplete="new-password">'
+                        '<button type="submit">Set new password</button></form></div>')
+        db.execute("UPDATE users SET password_hash=? WHERE id=?",
+                   (generate_password_hash(new), row["user_id"]))
+        db.execute("DELETE FROM password_resets WHERE id=?", (row["id"],))
+        db.commit()
+        return page("Reset password", None,
+                    '<div class="card"><h2>Password updated</h2>'
+                    f'<p><a href="{url_for("login")}">Log in with your new password</a></p></div>')
+    return page("Reset password", None,
+                """<div class="card"><h2>Choose a new password</h2>
+                <form method="post"><label>New password (at least 8 characters)</label>
+                <input type="password" name="new_password" required autocomplete="new-password">
+                <button type="submit">Set new password</button></form></div>""")
+
 ATC_AUDIO_JS = """
 (function(){
   var KEY='atc_audio';
@@ -1176,6 +1269,7 @@ def login_page(error=None):
       <label>Email</label><input type="email" name="email" required autocomplete="email">
       <label>Password</label><input type="password" name="password" required autocomplete="current-password">
       <button type="submit">Log in</button></form>
+      <p class="reg"><a href="/forgot-password">Forgot password?</a></p>
       <p class="reg">No account yet? <a href="/register">Register</a></p></div>
       {ATC_AUDIO_HTML}<script>{ATC_AUDIO_JS}</script>
       </body></html>""")
