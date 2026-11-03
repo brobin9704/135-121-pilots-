@@ -631,13 +631,15 @@ def _parse_overpass_elements(elements, clat, clon, radius_miles):
     return results
 
 
-def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
+def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", tail_timeout=30):
     """Real OpenStreetMap results around a coordinate pair.
 
     Overpass and the Nominatim fallback run in parallel on a shared pool;
     Overpass gets a short head start for its richer results, then the first
     usable results from either source win. A slow Overpass no longer blocks
     the fallback, and returning never waits for a straggler thread.
+    tail_timeout bounds the wait for a slow source (FBOs use a short one —
+    the Nominatim fallback can't find FBOs, so a long wait is pure delay).
     """
     if kind == "hotel":
         filt = 'tourism~"hotel|motel|guest_house|hostel"'
@@ -676,20 +678,23 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint=""):
                 return centre, results, None
         # The first finisher came up empty (or nothing finished in 6s): take
         # the first usable results from whichever finishes next.
-        for fut in concurrent.futures.as_completed([over_fut, nom_fut], timeout=30):
-            try:
-                results = fut.result()
-            except Exception:
-                results = []
-            if results:
-                return centre, results, None
+        try:
+            for fut in concurrent.futures.as_completed([over_fut, nom_fut], timeout=tail_timeout):
+                try:
+                    results = fut.result()
+                except Exception:
+                    results = []
+                if results:
+                    return centre, results, None
+        except concurrent.futures.TimeoutError:
+            pass  # slow source; fall through to the busy message
     finally:
         for fut in (over_fut, nom_fut):
             fut.cancel()
     return centre, [], "Listing service is busy — try again in a moment."
 
 
-def places_at_checkin(checkin, radius_miles, kind):
+def places_at_checkin(checkin, radius_miles, kind, tail_timeout=30):
     """Real OpenStreetMap results around the check-in place. No device location."""
     centre = None
     # Fast path: the bundled airport dataset (~53k airports) resolves real
@@ -708,7 +713,8 @@ def places_at_checkin(checkin, radius_miles, kind):
     if not centre:
         return None, None, "Could not resolve the check-in place. Check the airport code and city, then try again."
     lat, lon, display = centre
-    return places_at_coords(lat, lon, radius_miles, kind, display=display, city_hint=checkin["city"])
+    return places_at_coords(lat, lon, radius_miles, kind, display=display, city_hint=checkin["city"],
+                            tail_timeout=tail_timeout)
 
 # ---------------------------------------------------------------- rendering
 CSS = """
@@ -1734,7 +1740,7 @@ def fbo_list():
         _r, centre, results = cached
         error = None
     else:
-        centre, results, error = places_at_checkin(checkin, radius, "fbo")
+        centre, results, error = places_at_checkin(checkin, radius, "fbo", tail_timeout=8)
         if results is not None and not error:
             save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
     if results is None:
