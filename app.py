@@ -1690,28 +1690,46 @@ def area_reviews_html(db, user, checkin):
 
 
 def fbo_area_html(db, user, checkin):
-    """FBOs in the area.
+    """FBOs in the area, server-rendered from the check-in airport code.
 
-    With a check-in: auto-searches the check-in airport (3 mi) via /fbos,
-    lazy-loaded so Home renders instantly. Without a check-in: shows the
-    GPS "near me" button so pilots can still find FBOs.
-    FBO reviews render server-side right away in both cases.
+    Uses AirNav (fast, ~2s) with per-check-in caching. No JavaScript —
+    the list renders with the page so there's nothing to get stuck.
     """
     if not checkin:
         return ""
+    radius = 3
     manual = (url_for("new_review") + "?" + urllib.parse.urlencode(
         {"kind": "fbo", "airport": checkin["airport_code"] or "", "city": checkin["city"] or ""}))
-    html = (f'<div class="card"><h2>FBOs in the area</h2>'
-            f'<div id="fbo_live"><p class="muted">Loading FBOs\u2026</p></div>'
-            f'<p><a href="{manual}">Add FBO review</a> '
-            f'<span class="muted">— don\u2019t see yours? add it by name.</span></p></div>'
-            f'<script>(function(){{var el=document.getElementById("fbo_live");'
-            f'function show(t){{el.innerHTML=t;}}'
-            f'fetch("{url_for("fbo_list")}")'
-            f'.then(function(r){{return r.text();}})'
-            f'.then(show)'
-            f'.catch(function(){{show(\'<p class="muted">FBO listing unavailable — pull to refresh.</p>\');}});'
-            f'}})();</script>')
+    # Cached?
+    cached = load_search_cache(user["id"], "fbo", checkin)
+    if cached and cached[0] == radius:
+        _r, centre, results = cached
+        error = None
+    else:
+        fbos, _err = airnav_fbos(checkin["airport_code"])
+        if fbos is None:
+            # AirNav errored — fall back to OSM (slow, but better than nothing).
+            centre, results, error = places_at_checkin(checkin, radius, "fbo")
+            if results is not None and not error:
+                save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
+        else:
+            results = [{"name": f["name"], "brand": "", "lat": None, "lon": None,
+                        "address": "", "phone": f["phone"], "website": "", "cuisine": "",
+                        "hours": "", "atype": "", "distance": 0.0} for f in fbos]
+            centre = None
+            code = (checkin["airport_code"] or "").strip().upper()
+            if code in AIRPORT_COORDS:
+                _lat, _lon, _city, _name = AIRPORT_COORDS[code]
+                centre = (_lat, _lon, f"{_name}, {_city}")
+            error = None
+            save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
+    html = f'<div class="card"><h2>FBOs in the area</h2>'
+    if results is None:
+        html += '<p class="muted">Could not resolve the check-in location.</p>'
+    else:
+        html += external_results_html("fbo", (centre, results, error, radius, checkin), user, with_map=False)
+    html += (f'<p><a href="{manual}">Add FBO review</a> '
+             f'<span class="muted">— don\u2019t see yours? add it by name.</span></p></div>')
     fbo_rows = db.execute(
         """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
            WHERE r.kind = 'fbo' AND (upper(r.airport_code) = ? OR lower(r.city) = ?)
