@@ -1763,7 +1763,9 @@ def airnav_fbos(airport_code):
         return [], "no FBO section"
     section = h[start:start + 40000]
     seen = {}
-    for m in re.finditer(r"/airport/" + re.escape(code) + r"/([A-Z0-9_]{2,})", section):
+    # FBO links use the canonical ICAO code (e.g. KTEB) even when the page
+    # was fetched via the IATA code (TEB) — match any airport code here.
+    for m in re.finditer(r"/airport/[A-Z0-9]{3,4}/([A-Z0-9_]{2,})", section):
         fcode = m.group(1)
         if fcode in seen:
             continue
