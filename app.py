@@ -732,7 +732,6 @@ nav a.active{background:#0369a1}
 .bnav a .e{display:block;font-size:20px}
 .bnav a.on{color:#38bdf8;font-weight:700}
 .msgdot{display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:999px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:middle}
-.fab{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:31;width:56px;height:56px;border-radius:50%;background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;font-size:30px;line-height:54px;text-align:center;text-decoration:none;box-shadow:0 6px 18px rgba(2,132,199,.5)}
 .card{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:16px;margin:12px 0}
 input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;box-sizing:border-box;font-size:16px}
 input[type="checkbox"],input[type="radio"]{width:auto;min-height:24px;min-width:24px}
@@ -890,7 +889,6 @@ def page(title, user, body, flash=None, error=None):
             f'<a href="{u}" class="{"on" if (t == title or (t == "Profile" and title == "My Profile")) else ""}">'
             f'{_label(t, e)}</a>' for t, u, e in items)
         after = (f'<nav class="bnav">{bnav}</nav>'
-                 f'<a href="{url_for("board")}" class="fab" aria-label="Check in">+</a>'
                  f'{MINIMAP_JS}'
                  '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}</script>')
     pwa_head = ('<link rel="manifest" href="/manifest.json">'
@@ -1617,8 +1615,12 @@ def upcoming_checkins_html(user):
 
 def current_checkin_html(checkin):
     """Card showing the user's active check-in (hotel/restaurant places link to the review form)."""
+    checkin_btn = (f'<a href="{url_for("board")}" class="btn" style="width:auto;white-space:nowrap">'
+                   f'+ Check in</a>')
+    head = (f'<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
+            f'<h2 style="margin:0">Current check-in</h2>{checkin_btn}</div>')
     if not checkin:
-        return '<div class="card"><h2>Current check-in</h2><p class="muted">No active check-in.</p></div>'
+        return f'<div class="card">{head}<p class="muted">No active check-in.</p></div>'
     def _place_link(place, kind):
         url = (url_for("new_review") + "?" + urllib.parse.urlencode(
             {"kind": kind, "place": place,
@@ -1637,7 +1639,7 @@ def current_checkin_html(checkin):
         status_lines.append(f"{_place_link(checkin['place_name'], kind)} {_slot_checkout_form(kind, kind)}")
     status_lines.append(f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}')
     status_html = "<br>".join(status_lines)
-    return f"""<div class="card"><h2>Current check-in</h2>
+    return f"""<div class="card">{head}
       <p><strong>{status_html}</strong></p>
       <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
       <p><a href="{url_for('edit_checkin')}">Edit check-in</a></p>
