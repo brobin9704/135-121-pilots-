@@ -2173,7 +2173,7 @@ def external_results_html(kind, data, user):
                  "phone": r["phone"] or "", "address": r["address"] or "",
                  "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
             checkin_btn = ""
-            if place["airport_code"]:
+            if kind == "hotel" and place["airport_code"]:
                 checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px" onsubmit="return confirm(\'Check in here?\')">'
                     f'<input type="hidden" name="action" value="checkin">'
                     f'<input type="hidden" name="airport_code" value="{esc(place["airport_code"])}">'
