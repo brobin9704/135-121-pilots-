@@ -1740,7 +1740,7 @@ def fbo_list():
         _r, centre, results = cached
         error = None
     else:
-        centre, results, error = places_at_checkin(checkin, radius, "fbo", tail_timeout=8)
+        centre, results, error = places_at_checkin(checkin, radius, "fbo")
         if results is not None and not error:
             save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
     if results is None:
