@@ -1805,7 +1805,7 @@ def fbo_list():
         code, city, _name, _dist = nearest_airport_for(glat, glon)
         # GPS "near me": AirNav for the nearest airport, else OSM.
         fbos, _err = airnav_fbos(code) if code else (None, "no airport")
-        if fbos:
+        if fbos is not None:
             results = [{"name": f["name"], "brand": "", "lat": None, "lon": None,
                         "address": "", "phone": f["phone"], "website": "", "cuisine": "",
                         "hours": "", "atype": "", "distance": 0.0} for f in fbos]
@@ -1825,18 +1825,20 @@ def fbo_list():
         return external_results_html("fbo", (centre, results, None, radius, checkin), user, with_map=False)
     # Check-in airport: AirNav first (real FBO data), OSM fallback.
     fbos, _err = airnav_fbos(checkin["airport_code"])
-    if fbos:
+    if fbos is not None:
+        # AirNav answered (even if zero FBOs) — authoritative for US airports.
+        # Don't fall back to the slow OSM search when AirNav says none.
         results = [{"name": f["name"], "brand": "", "lat": None, "lon": None,
                     "address": "", "phone": f["phone"], "website": "", "cuisine": "",
                     "hours": "", "atype": "", "distance": 0.0} for f in fbos]
         centre = None
-        # Centre display for the header.
         code = (checkin["airport_code"] or "").strip().upper()
         if code in AIRPORT_COORDS:
             _lat, _lon, _city, _name = AIRPORT_COORDS[code]
             centre = (_lat, _lon, f"{_name}, {_city}")
         save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
         return external_results_html("fbo", (centre, results, None, radius, checkin), user, with_map=False)
+    # AirNav errored — fall back to OSM.
     centre, results, error = places_at_checkin(checkin, radius, "fbo")
     if results is not None and not error:
         save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
