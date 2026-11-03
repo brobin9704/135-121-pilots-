@@ -1764,10 +1764,15 @@ def airnav_fbos(airport_code):
         if fcode in seen:
             continue
         ahead = section[m.end():m.end() + 600]
+        # Name is either IMG alt text or the link text itself.
+        name = None
         alt_m = re.search(r'alt="([^"]+)"', ahead)
-        if not alt_m:
-            continue
-        name = alt_m.group(1).strip()
+        if alt_m:
+            name = alt_m.group(1).strip()
+        if not name:
+            txt_m = re.search(r">([^<]{2,80})</A>", ahead)
+            if txt_m:
+                name = txt_m.group(1).strip()
         if not name or "Add a business" in name or "://" in name:
             continue
         phone_m = re.search(r"(\d{3}-\d{3}-\d{4})", ahead)
