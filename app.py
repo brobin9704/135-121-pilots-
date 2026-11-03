@@ -344,6 +344,8 @@ def init_db():
             # Widen the kind CHECK to include 'fbo' (auto-named reviews_kind_check).
             cur.execute("ALTER TABLE reviews DROP CONSTRAINT IF EXISTS reviews_kind_check")
             cur.execute("ALTER TABLE reviews ADD CONSTRAINT reviews_kind_check CHECK (kind IN ('hotel','restaurant','fbo'))")
+            # Clear FBO search caches poisoned by failed searches during the OSM outage.
+            cur.execute("DELETE FROM search_cache WHERE kind = 'fbo'")
             cur.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
             cur.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
             conn.commit()
@@ -1713,7 +1715,11 @@ def fbo_area_html(db, user, checkin):
 @app.route("/fbos")
 @login_required
 def fbo_list():
-    """FBO search fragment for the Home page (lazy-loaded; cached per check-in)."""
+    """FBO search fragment for the Home page (lazy-loaded; cached per check-in).
+
+    Failed searches are NOT cached, so the list retries on the next Home
+    visit and fills in on its own once the listing service recovers.
+    """
     user = current_user()
     checkin = current_checkin(user["id"])
     if not checkin:
@@ -1725,10 +1731,18 @@ def fbo_list():
         error = None
     else:
         centre, results, error = places_at_checkin(checkin, radius, "fbo")
-        if results is not None:
+        if results is not None and not error:
             save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
     if results is None:
         return '<p class="muted">Could not resolve the check-in location.</p>'
+    if error and not results:
+        return ('<p class="muted">The FBO directory is temporarily unavailable '
+                '(map service is slow right now) — it will appear on its own. '
+                'You can still <a href="' +
+                esc(url_for("new_review") + "?" + urllib.parse.urlencode(
+                    {"kind": "fbo", "airport": checkin["airport_code"] or "",
+                     "city": checkin["city"] or ""})) +
+                '">add an FBO review by name</a>.</p>')
     return external_results_html("fbo", (centre, results, error, radius, checkin), user, with_map=False)
 
 
