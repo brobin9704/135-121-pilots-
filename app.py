@@ -131,6 +131,18 @@ try:
         AIRPORT_COORDS = json.load(_f)
 except (OSError, ValueError):
     pass
+# City corrections: the bundled OurAirports data lists some airports under the
+# wrong city (e.g. KYIP / Willow Run is in Ypsilanti, not Detroit). Fixes here
+# override the dataset at load time, for both the server lookup and the
+# client-side autofill file (regenerated below).
+try:
+    _fixes_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "airport_city_fixes.json")
+    with open(_fixes_path, encoding="utf-8") as _f:
+        for _code, _city in json.load(_f).items():
+            if _code in AIRPORT_COORDS:
+                AIRPORT_COORDS[_code][2] = _city
+except (OSError, ValueError):
+    pass
 
 # ---------------------------------------------------------------- database
 SQLITE_SCHEMA = """
