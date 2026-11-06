@@ -783,26 +783,18 @@ AUTOFILL_JS = """<script>
     fetch('/airport-info?code='+encodeURIComponent(code)).then(function(r){return r.json();}).then(function(d){
       if(d.state){
         stateEl.value=d.state;
-        // Load this state's cities into the city dropdown, keeping the
-        // auto-filled city selected.
+        // Load this state's cities into the city type-ahead, keeping the
+        // auto-filled city in the field.
         if(window.loadCitiesForState){ window.loadCitiesForState(d.city||null); }
       }
-      if(d.city&&cityEl.tagName==='SELECT'){
-        // The city dropdown is populated by loadCitiesForState above; if the
-        // city is already an option, select it.
-        setTimeout(function(){
-          for(var i=0;i<cityEl.options.length;i++){
-            if(cityEl.options[i].value===d.city){ cityEl.value=d.city; break; }
-          }
-        },300);
-      }
+      if(d.city){ cityEl.value=d.city; cityEl.dataset.auto='1'; }
     }).catch(function(){});
   }
   function lookup(){
     var code=codeEl.value.trim().toUpperCase();
     if(code.length<3||!db)return;
     var city=db[code];
-    if(city&&cityEl.tagName!=='SELECT'&&(!cityEl.value||cityEl.dataset.auto==='1')){cityEl.value=city;cityEl.dataset.auto='1';}
+    if(city&&(!cityEl.value||cityEl.dataset.auto==='1')){cityEl.value=city;cityEl.dataset.auto='1';}
     fillState();
   }
   function ensure(){
@@ -923,33 +915,28 @@ FINDME_JS = """<script>
 CITY_DROPDOWN_JS = """<script>
 (function(){
   var stateEl=document.getElementById('state'),cityEl=document.getElementById('city');
+  var listEl=document.getElementById('city_list');
   if(!stateEl||!cityEl)return;
   function loadCities(keep){
     var state=stateEl.value.trim();
     if(!state){
-      cityEl.innerHTML='<option value="">Select a state first</option>';
+      if(listEl)listEl.innerHTML='';
       return;
     }
     fetch('/cities-in-state?state='+encodeURIComponent(state))
       .then(function(r){ return r.json(); })
       .then(function(d){
         var cities=d.cities||[];
-        var html='<option value="">Select a city</option>';
+        var html='';
         cities.forEach(function(c){
-          var sel=(keep&&keep===c)?' selected':'';
-          html+='<option value="'+c.replace(/"/g,'&quot;')+'"'+sel+'>'+c+'</option>';
+          html+='<option value="'+c.replace(/"/g,'&quot;')+'">';
         });
-        cityEl.innerHTML=html;
-        if(keep && cities.indexOf(keep)===-1){
-          // City not in the state list (e.g. a small town) — keep it selectable.
-          var opt=document.createElement('option');
-          opt.value=keep; opt.textContent=keep; opt.selected=true;
-          cityEl.appendChild(opt);
-        }
+        if(listEl)listEl.innerHTML=html;
+        if(keep){ cityEl.value=keep; }
       })
       .catch(function(){});
   }
-  stateEl.addEventListener('change',function(){ loadCities(null); });
+  stateEl.addEventListener('change',function(){ cityEl.value=''; loadCities(null); });
   // Exposed for the airport-code autofill, which sets state + city together.
   window.loadCitiesForState=loadCities;
 })();
@@ -1731,59 +1718,29 @@ def airports_within(lat, lon, radius_miles=20):
 def airports_near_city(city, state=None, radius_miles=20):
     """Airports within radius_miles of a city (and state, when given).
 
-    Verifies the city + state against Nominatim first: geocodes "city, state",
-    checks the returned address really is in that state, and uses those
-    coordinates as the centre. Falls back to the bundled dataset city match
-    when no state is given or the geocode fails.
+    Verifies the city + state against the bundled US cities dataset (local,
+    no network — Nominatim rate-limits the server's shared IP): the city must
+    appear in that state's list. The city's coordinates from the same dataset
+    are the search centre.
 
     Returns ([(code, city, name, dist)], matched_city, verified_bool).
-    verified_bool is True only when Nominatim confirmed the city is in the state.
+    verified_bool is True only when the city was confirmed in the state.
     """
     city = (city or "").strip()
     state = (state or "").strip().upper()
-    if not city or not AIRPORT_COORDS:
+    if not city or not state or not AIRPORT_COORDS:
         return [], None, False
-    # --- Verify city + state via Nominatim when a state is given. ---
-    if state:
-        state_name = dict(US_STATES).get(state, state)
-        params = urllib.parse.urlencode({
-            "q": f"{city}, {state_name}", "format": "json",
-            "addressdetails": 1, "limit": 5})
-        try:
-            results = http_get_json(f"{NOMINATIM_URL}?{params}")
-        except Exception:
-            results = []
-        for r in (results or []):
-            addr = r.get("address", {})
-            r_state = (addr.get("state_code") or addr.get("state") or "").strip().upper()
-            r_city = (addr.get("city") or addr.get("town") or addr.get("village")
-                      or addr.get("municipality") or "").strip().lower()
-            # State must match (code or name); city must match when Nominatim gives one.
-            state_ok = (r_state == state or r_state == state_name.upper())
-            city_ok = (not r_city or r_city == city.lower())
-            if state_ok and city_ok:
-                lat, lon = float(r["lat"]), float(r["lon"])
-                matched = addr.get("city") or addr.get("town") or city
-                return airports_within(lat, lon, radius_miles), matched, True
-        # No Nominatim hit confirmed the city in this state — do not fall back
-        # to a dataset match in a different state. Return empty + unverified.
-        return [], None, False
-    # --- No state: dataset city match (exact, then substring). ---
-    cl = city.lower()
-    centre = None
-    for code, (alat, alon, c, name) in AIRPORT_COORDS.items():
-        if c.strip().lower() == cl:
-            centre = (alat, alon, c)
+    cities = load_us_cities().get(state, {})
+    # Case-insensitive city lookup.
+    match = None
+    for name, coords in cities.items():
+        if name.lower() == city.lower():
+            match = (name, coords)
             break
-    if centre is None:
-        for code, (alat, alon, c, name) in AIRPORT_COORDS.items():
-            if cl in c.strip().lower():
-                centre = (alat, alon, c)
-                break
-    if centre is None:
+    if match is None:
         return [], None, False
-    lat, lon, matched = centre
-    return airports_within(lat, lon, radius_miles), matched, False
+    matched, (lat, lon) = match
+    return airports_within(lat, lon, radius_miles), matched, True
 
 
 def nearest_airport_for(lat, lon):
@@ -1885,17 +1842,13 @@ def airport_info():
 
 
 # US cities by state (bundled dataset, public domain — kelvins/US-Cities-Database).
+# Format: {STATE: {CITY: [lat, lon]}}.
 _US_CITIES = None
 
 
-@app.route("/cities-in-state")
-@login_required
-def cities_in_state():
-    """All cities in a state, sorted. Used to populate the city dropdown."""
+def load_us_cities():
+    """Load the bundled cities dataset once (cached in memory)."""
     global _US_CITIES
-    state = request.args.get("state", "").strip().upper()
-    if not state:
-        return jsonify({"cities": []})
     if _US_CITIES is None:
         try:
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -1903,7 +1856,18 @@ def cities_in_state():
                 _US_CITIES = json.load(f)
         except Exception:
             _US_CITIES = {}
-    return jsonify({"cities": _US_CITIES.get(state, [])})
+    return _US_CITIES
+
+
+@app.route("/cities-in-state")
+@login_required
+def cities_in_state():
+    """All cities in a state, sorted. Used to populate the city dropdown."""
+    state = request.args.get("state", "").strip().upper()
+    if not state:
+        return jsonify({"cities": []})
+    cities = load_us_cities().get(state, {})
+    return jsonify({"cities": sorted(cities.keys())})
 
 
 @app.route("/airports-near-city")
@@ -2326,7 +2290,7 @@ def board():
       <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + ' on ' + document.getElementsByName('start_date')[0].value + '?')"><input type="hidden" name="action" value="checkin">
       <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
       <label>State</label>{_state_dd}
-      <label>City</label><select name="city" id="city" required><option value="">Select a state first</option></select>
+      <label>City</label><input name="city" id="city" list="city_list" placeholder="Start typing a city" autocomplete="off" required><datalist id="city_list"></datalist>
       <div id="city_airports"></div>
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
@@ -2401,23 +2365,15 @@ def edit_checkin():
     except (KeyError, IndexError):
         _cur_state = ""
     _edit_state_dd = state_dropdown(_cur_state)
-    # Pre-populate the city dropdown with the current state's cities.
+    # Pre-populate the city type-ahead with the current state's cities.
     _cur_city = checkin["city"] or ""
-    _city_opts = ['<option value="">Select a city</option>']
+    _city_opts = []
     if _cur_state:
-        if _US_CITIES is None:
-            try:
-                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                       "static", "us_cities.json"), encoding="utf-8") as _f:
-                    _US_CITIES = json.load(_f)
-            except Exception:
-                _US_CITIES = {}
-        for _c in _US_CITIES.get(_cur_state, []):
-            _sel = ' selected' if _c == _cur_city else ''
-            _city_opts.append(f'<option value="{esc(_c)}"{_sel}>{esc(_c)}</option>')
-        if _cur_city and _cur_city not in _US_CITIES.get(_cur_state, []):
-            _city_opts.append(f'<option value="{esc(_cur_city)}" selected>{esc(_cur_city)}</option>')
-    _edit_city_dd = (f'<select name="city" id="city" required>' + "".join(_city_opts) + '</select>')
+        for _c in sorted(load_us_cities().get(_cur_state, {}).keys()):
+            _city_opts.append(f'<option value="{esc(_c)}">')
+    _edit_city_dd = (f'<input name="city" id="city" list="city_list" value="{esc(_cur_city)}" '
+                     f'placeholder="Start typing a city" autocomplete="off" required>'
+                     f'<datalist id="city_list">' + "".join(_city_opts) + '</datalist>')
     body = f"""
       <div class="card"><h2>Edit check-in</h2>
       <form method="post">
