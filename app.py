@@ -2794,14 +2794,21 @@ def external_results_html(kind, data, user, with_map=True):
     for r in results:
         detail = ""
         if kind == "hotel":
-            detail = f"<div>Brand: {esc(r['brand'] or r['name'])}</div>"
+            if r.get("brand") and r["brand"] != r["name"]:
+                detail = f"<div>Brand: {esc(r['brand'])}</div>"
         elif kind == "restaurant":
-            detail = f"<div>Cuisine: {esc(r['cuisine'])}</div><div>Hours: {esc(r['hours'])}</div>"
+            if r.get("cuisine"):
+                detail += f"<div>Cuisine: {esc(r['cuisine'])}</div>"
+            if r.get("hours"):
+                detail += f"<div>Hours: {esc(r['hours'])}</div>"
         elif kind == "fbo" and r.get("brand"):
             detail = f"<div>Brand: {esc(r['brand'])}</div>"
         elif r.get("atype"):
             detail = f"<div>Type: {esc(r['atype'])}</div>"
         web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
+        addr = f"<div>Address: {esc(r['address'])}</div>" if r.get("address") else ""
+        phone = (f"<div>Phone: <a href=\"tel:{esc(r['phone'])}\">{esc(r['phone'])}</a></div>"
+                 if r.get("phone") else "")
         if kind == "attraction":
             # No reviews or check-ins for attractions — link the name to an OSM search.
             loc_url = ("https://www.openstreetmap.org/search?" + urllib.parse.urlencode(
@@ -2833,7 +2840,7 @@ def external_results_html(kind, data, user, with_map=True):
                          f'<strong>{esc(r["name"])}</strong></a>')
         cards += f"""<div class="card">{name_html} <span class="muted">{r['distance']} mi</span>
           {f'<div><img src="{esc(r["logo"])}" alt="{esc(r["name"])} logo" style="max-width:200px;max-height:60px;margin:8px 0"></div>' if r.get("logo") else ""}
-          {detail}<div>Address: {esc(r['address'])}</div><div>Phone: {esc(r['phone'])}</div>{web}
+          {detail}{addr}{phone}{web}
           {action_html}</div>"""
     return header + map_html + cards
 
