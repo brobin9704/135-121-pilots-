@@ -781,14 +781,28 @@ AUTOFILL_JS = """<script>
     var code=codeEl.value.trim().toUpperCase();
     if(code.length<3)return;
     fetch('/airport-info?code='+encodeURIComponent(code)).then(function(r){return r.json();}).then(function(d){
-      if(d.state){ stateEl.value=d.state; }
+      if(d.state){
+        stateEl.value=d.state;
+        // Load this state's cities into the city dropdown, keeping the
+        // auto-filled city selected.
+        if(window.loadCitiesForState){ window.loadCitiesForState(d.city||null); }
+      }
+      if(d.city&&cityEl.tagName==='SELECT'){
+        // The city dropdown is populated by loadCitiesForState above; if the
+        // city is already an option, select it.
+        setTimeout(function(){
+          for(var i=0;i<cityEl.options.length;i++){
+            if(cityEl.options[i].value===d.city){ cityEl.value=d.city; break; }
+          }
+        },300);
+      }
     }).catch(function(){});
   }
   function lookup(){
     var code=codeEl.value.trim().toUpperCase();
     if(code.length<3||!db)return;
     var city=db[code];
-    if(city&&(!cityEl.value||cityEl.dataset.auto==='1')){cityEl.value=city;cityEl.dataset.auto='1';}
+    if(city&&cityEl.tagName!=='SELECT'&&(!cityEl.value||cityEl.dataset.auto==='1')){cityEl.value=city;cityEl.dataset.auto='1';}
     fillState();
   }
   function ensure(){
@@ -902,6 +916,42 @@ FINDME_JS = """<script>
       done();
     },{enableHighAccuracy:true,timeout:12000,maximumAge:60000});
   });
+})();
+</script>"""
+
+# City dropdown: picking a state loads that state's cities into the city <select>.
+CITY_DROPDOWN_JS = """<script>
+(function(){
+  var stateEl=document.getElementById('state'),cityEl=document.getElementById('city');
+  if(!stateEl||!cityEl)return;
+  function loadCities(keep){
+    var state=stateEl.value.trim();
+    if(!state){
+      cityEl.innerHTML='<option value="">Select a state first</option>';
+      return;
+    }
+    fetch('/cities-in-state?state='+encodeURIComponent(state))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var cities=d.cities||[];
+        var html='<option value="">Select a city</option>';
+        cities.forEach(function(c){
+          var sel=(keep&&keep===c)?' selected':'';
+          html+='<option value="'+c.replace(/"/g,'&quot;')+'"'+sel+'>'+c+'</option>';
+        });
+        cityEl.innerHTML=html;
+        if(keep && cities.indexOf(keep)===-1){
+          // City not in the state list (e.g. a small town) — keep it selectable.
+          var opt=document.createElement('option');
+          opt.value=keep; opt.textContent=keep; opt.selected=true;
+          cityEl.appendChild(opt);
+        }
+      })
+      .catch(function(){});
+  }
+  stateEl.addEventListener('change',function(){ loadCities(null); });
+  // Exposed for the airport-code autofill, which sets state + city together.
+  window.loadCitiesForState=loadCities;
 })();
 </script>"""
 
@@ -1834,6 +1884,28 @@ def airport_info():
     return jsonify({"code": code, "city": city, "state": airport_state(code), "name": name})
 
 
+# US cities by state (bundled dataset, public domain — kelvins/US-Cities-Database).
+_US_CITIES = None
+
+
+@app.route("/cities-in-state")
+@login_required
+def cities_in_state():
+    """All cities in a state, sorted. Used to populate the city dropdown."""
+    global _US_CITIES
+    state = request.args.get("state", "").strip().upper()
+    if not state:
+        return jsonify({"cities": []})
+    if _US_CITIES is None:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "static", "us_cities.json"), encoding="utf-8") as f:
+                _US_CITIES = json.load(f)
+        except Exception:
+            _US_CITIES = {}
+    return jsonify({"cities": _US_CITIES.get(state, [])})
+
+
 @app.route("/airports-near-city")
 @login_required
 def airports_near_city_route():
@@ -2253,12 +2325,12 @@ def board():
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
       <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + ' on ' + document.getElementsByName('start_date')[0].value + '?')"><input type="hidden" name="action" value="checkin">
       <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
-      <label>City</label><input name="city" id="city" placeholder="Tulsa" required>
-      <div id="city_airports"></div>
       <label>State</label>{_state_dd}
+      <label>City</label><select name="city" id="city" required><option value="">Select a state first</option></select>
+      <div id="city_airports"></div>
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
-      <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}{CITY_AIRPORTS_JS}
+      <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}{CITY_DROPDOWN_JS}{CITY_AIRPORTS_JS}
       {upcoming_checkins_html(user)}
       {friends_nearby_html(db, user, checkin)}{area_reviews_html(db, user, checkin)}{history_html}"""
     return page("Check-In", user, body, flash=flash)
@@ -2329,19 +2401,36 @@ def edit_checkin():
     except (KeyError, IndexError):
         _cur_state = ""
     _edit_state_dd = state_dropdown(_cur_state)
+    # Pre-populate the city dropdown with the current state's cities.
+    _cur_city = checkin["city"] or ""
+    _city_opts = ['<option value="">Select a city</option>']
+    if _cur_state:
+        if _US_CITIES is None:
+            try:
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       "static", "us_cities.json"), encoding="utf-8") as _f:
+                    _US_CITIES = json.load(_f)
+            except Exception:
+                _US_CITIES = {}
+        for _c in _US_CITIES.get(_cur_state, []):
+            _sel = ' selected' if _c == _cur_city else ''
+            _city_opts.append(f'<option value="{esc(_c)}"{_sel}>{esc(_c)}</option>')
+        if _cur_city and _cur_city not in _US_CITIES.get(_cur_state, []):
+            _city_opts.append(f'<option value="{esc(_cur_city)}" selected>{esc(_cur_city)}</option>')
+    _edit_city_dd = (f'<select name="city" id="city" required>' + "".join(_city_opts) + '</select>')
     body = f"""
       <div class="card"><h2>Edit check-in</h2>
       <form method="post">
       <input type="hidden" name="id" value="{checkin['id']}">
       <label>Airport code</label><input name="airport_code" value="{esc(checkin['airport_code'] or '')}" required>
-      <label>City</label><input name="city" value="{esc(checkin['city'] or '')}" required>
       <label>State</label>{_edit_state_dd}
+      <label>City</label>{_edit_city_dd}
       <label>Hotel</label><input name="hotel_place" value="{esc(checkin['hotel_place'] or '')}" placeholder="Hotel (optional)">
       <label>Restaurant</label><input name="restaurant_place" value="{esc(checkin['restaurant_place'] or '')}" placeholder="Restaurant (optional)">
       <label>Start date</label><input type="date" name="start_date" value="{esc(checkin['start_date'] or '')}">
       <label>End date (optional)</label><input type="date" name="end_date" value="{esc(checkin['end_date'] or '')}">
       <button type="submit">Save changes</button></form>
-      <p><a href="{url_for('index')}">Cancel</a></p></div>"""
+      <p><a href="{url_for('index')}">Cancel</a></p></div>{CITY_DROPDOWN_JS}"""
     return page("Edit check-in", user, body)
 
 
