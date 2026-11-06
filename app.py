@@ -110,6 +110,21 @@ def _author_name(r):
 # Airport coordinates for the "Find me" button (server-side only; OurAirports,
 # public domain). Maps CODE -> [lat, lon, city, name].
 AIRPORT_COORDS = {}
+
+# US states for the check-in state dropdown.
+US_STATES = [("AL", "Alabama"), ("AK", "Alaska"), ("AZ", "Arizona"), ("AR", "Arkansas"),
+    ("CA", "California"), ("CO", "Colorado"), ("CT", "Connecticut"), ("DE", "Delaware"),
+    ("DC", "District of Columbia"), ("FL", "Florida"), ("GA", "Georgia"), ("HI", "Hawaii"),
+    ("ID", "Idaho"), ("IL", "Illinois"), ("IN", "Indiana"), ("IA", "Iowa"), ("KS", "Kansas"),
+    ("KY", "Kentucky"), ("LA", "Louisiana"), ("ME", "Maine"), ("MD", "Maryland"),
+    ("MA", "Massachusetts"), ("MI", "Michigan"), ("MN", "Minnesota"), ("MS", "Mississippi"),
+    ("MO", "Missouri"), ("MT", "Montana"), ("NE", "Nebraska"), ("NV", "Nevada"),
+    ("NH", "New Hampshire"), ("NJ", "New Jersey"), ("NM", "New Mexico"), ("NY", "New York"),
+    ("NC", "North Carolina"), ("ND", "North Dakota"), ("OH", "Ohio"), ("OK", "Oklahoma"),
+    ("OR", "Oregon"), ("PA", "Pennsylvania"), ("RI", "Rhode Island"), ("SC", "South Carolina"),
+    ("SD", "South Dakota"), ("TN", "Tennessee"), ("TX", "Texas"), ("UT", "Utah"),
+    ("VT", "Vermont"), ("VA", "Virginia"), ("WA", "Washington"), ("WV", "West Virginia"),
+    ("WI", "Wisconsin"), ("WY", "Wyoming")]
 try:
     _coords_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "airports_coords.json")
     with open(_coords_path, encoding="utf-8") as _f:
@@ -880,6 +895,40 @@ FINDME_JS = """<script>
 })();
 </script>"""
 
+CITY_AIRPORTS_JS = """<script>
+(function(){
+  var cityEl=document.getElementById('city'),codeEl=document.getElementById('airport_code');
+  var stateEl=document.getElementById('state'),box=document.getElementById('city_airports');
+  if(!cityEl||!codeEl||!box)return;
+  var timer=null;
+  function lookup(){
+    var city=cityEl.value.trim(),state=stateEl?stateEl.value.trim():'';
+    if(city.length<3){ box.innerHTML=''; return; }
+    fetch('/airports-near-city?city='+encodeURIComponent(city)+'&state='+encodeURIComponent(state))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var aps=d.airports||[];
+        if(!aps.length){ box.innerHTML=''; return; }
+        var html='<p class="muted" style="margin:8px 0 4px">Airports near '+city+(state?', '+state:'')+' (tap one):</p>';
+        aps.forEach(function(a){
+          html+='<button type="button" class="city-ap" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font-size:15px"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
+        });
+        box.innerHTML=html;
+        box.querySelectorAll('.city-ap').forEach(function(b){
+          b.addEventListener('click',function(){
+            codeEl.value=b.dataset.code; cityEl.value=b.dataset.city;
+            box.innerHTML='';
+          });
+        });
+      })
+      .catch(function(){ box.innerHTML=''; });
+  }
+  cityEl.addEventListener('input',function(){ clearTimeout(timer); timer=setTimeout(lookup,500); });
+  cityEl.addEventListener('change',lookup);
+  if(stateEl)stateEl.addEventListener('change',lookup);
+})();
+</script>"""
+
 def page(title, user, body, flash=None, error=None):
     msg = f'<div class="flash">{flash}</div>' if flash else ""
     err = f'<div class="error">{error}</div>' if error else ""
@@ -929,6 +978,17 @@ def page(title, user, body, flash=None, error=None):
 def esc(s):
     import html
     return html.escape(str(s or ""))
+
+
+def state_dropdown(selected="", field_id="state", field_name="state"):
+    """State <select> for the check-in form. selected is a 2-letter code."""
+    sel = (selected or "").strip().upper()
+    opts = ['<option value="">Select state</option>']
+    for code, name in US_STATES:
+        s = ' selected' if code == sel else ''
+        opts.append(f'<option value="{code}"{s}>{name}</option>')
+    return (f'<select name="{field_name}" id="{field_id}" style="display:block;width:100%">'
+            + "".join(opts) + '</select>')
 
 def stars(n):
     return "★" * int(n) + "☆" * (5 - int(n))
@@ -1654,7 +1714,7 @@ def nearest_airport_for(lat, lon):
 @app.route("/nearby-airports")
 @login_required
 def nearby_airports():
-    """Airports within 50 miles of a tap-initiated GPS fix. Nothing is stored."""
+    """Airports within 20 miles of a tap-initiated GPS fix. Nothing is stored."""
     try:
         lat = float(request.args.get("lat", ""))
         lon = float(request.args.get("lon", ""))
@@ -1664,6 +1724,22 @@ def nearby_airports():
     found = airports_within(lat, lon, radius)
     return jsonify({"airports": [{"code": c, "city": ci, "name": n, "distance_mi": d}
                                  for c, ci, n, d in found]})
+
+
+@app.route("/airports-near-city")
+@login_required
+def airports_near_city_route():
+    """Airports within 20 miles of a typed city (and optional state)."""
+    city = request.args.get("city", "").strip()
+    state = request.args.get("state", "").strip()
+    if not city:
+        return jsonify({"airports": [], "matched_city": None})
+    found, matched = airports_near_city(city)
+    # Filter by state if given (match airport city+state via dataset city name only
+    # — the dataset has no state column, so this is a best-effort filter).
+    return jsonify({"airports": [{"code": c, "city": ci, "name": n, "distance_mi": d}
+                                 for c, ci, n, d in found],
+                    "matched_city": matched})
 
 
 @app.route("/nearest_airport")
@@ -2047,16 +2123,18 @@ def board():
         history_html = f'<div class="card"><h2>Check-in history</h2><ul>{items}</ul></div>'
     else:
         history_html = ""
+    _state_dd = state_dropdown()
     body = f"""
       <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
       <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + ' on ' + document.getElementsByName('start_date')[0].value + '?')"><input type="hidden" name="action" value="checkin">
       <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
       <label>City</label><input name="city" id="city" placeholder="Tulsa" required>
-      <label>State</label><input name="state" id="state" placeholder="OK" maxlength="2" style="width:80px" autocomplete="off">
+      <div id="city_airports"></div>
+      <label>State</label>{_state_dd}
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
-      <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
+      <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}{CITY_AIRPORTS_JS}
       {upcoming_checkins_html(user)}
       {friends_nearby_html(db, user, checkin)}{area_reviews_html(db, user, checkin)}{history_html}"""
     return page("Check-In", user, body, flash=flash)
@@ -2118,13 +2196,18 @@ def edit_checkin():
         db.commit()
         flask_flash("Check-in updated.")
         return redirect(url_for("index"))
+    try:
+        _cur_state = checkin["state"]
+    except (KeyError, IndexError):
+        _cur_state = ""
+    _edit_state_dd = state_dropdown(_cur_state)
     body = f"""
       <div class="card"><h2>Edit check-in</h2>
       <form method="post">
       <input type="hidden" name="id" value="{checkin['id']}">
       <label>Airport code</label><input name="airport_code" value="{esc(checkin['airport_code'] or '')}" required>
       <label>City</label><input name="city" value="{esc(checkin['city'] or '')}" required>
-      <label>State</label><input name="state" value="{esc(checkin['state'] or '')}" maxlength="2" style="width:80px">
+      <label>State</label>{_edit_state_dd}
       <label>Hotel</label><input name="hotel_place" value="{esc(checkin['hotel_place'] or '')}" placeholder="Hotel (optional)">
       <label>Restaurant</label><input name="restaurant_place" value="{esc(checkin['restaurant_place'] or '')}" placeholder="Restaurant (optional)">
       <label>Start date</label><input type="date" name="start_date" value="{esc(checkin['start_date'] or '')}">
