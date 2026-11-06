@@ -872,7 +872,7 @@ FINDME_JS = """<script>
           say('Airports near you (tap one):');
           var html='<div style="margin-top:8px">';
           aps.forEach(function(a){
-            html+='<button type="button" class="ap-pick" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font-size:15px"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
+            html+='<button type="button" class="ap-pick" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-size:15px"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
           });
           html+='</div>';
           list.innerHTML=html;
@@ -911,7 +911,7 @@ CITY_AIRPORTS_JS = """<script>
         if(!aps.length){ box.innerHTML=''; return; }
         var html='<p class="muted" style="margin:8px 0 4px">Airports near '+city+(state?', '+state:'')+' (tap one):</p>';
         aps.forEach(function(a){
-          html+='<button type="button" class="city-ap" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font-size:15px"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
+          html+='<button type="button" class="city-ap" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-size:15px"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
         });
         box.innerHTML=html;
         box.querySelectorAll('.city-ap').forEach(function(b){
