@@ -520,6 +520,25 @@ def haversine_miles(lat1, lon1, lat2, lon2):
     a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
     return 2 * r * math.asin(math.sqrt(a))
 
+
+def _state_code(state):
+    """Full state name (or ISO code) -> 2-letter code. Returns the input unchanged when unknown."""
+    s = (state or "").strip()
+    if not s:
+        return ""
+    if len(s) == 2:
+        return s.upper()
+    iso = s.upper().replace("US-", "")
+    if len(iso) == 2:
+        return iso
+    return {v.upper(): k for k, v in US_STATES}.get(s.upper(), s)
+
+
+def _short_address(street, city, state):
+    """Street, city, state — only the parts that exist, comma-separated."""
+    parts = [p.strip() for p in [street, city, state] if p and p.strip()]
+    return ", ".join(parts)
+
 def http_get_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=20) as resp:
@@ -597,7 +616,11 @@ def nominatim_fallback(lat, lon, radius_miles, kind, city):
             continue
         extra = r.get("extratags") or {}
         addr = r.get("address") or {}
-        address = r.get("display_name", "")
+        street = " ".join(x for x in [addr.get("house_number"), addr.get("road")] if x)
+        city = (addr.get("city") or addr.get("town") or addr.get("village")
+                or addr.get("municipality") or "")
+        state = _state_code(addr.get("ISO3166-2-lvl4") or addr.get("state_code") or addr.get("state"))
+        address = _short_address(street, city, state)
         out.append({
             "name": r.get("name") or address.split(",")[0], "brand": "",
             "lat": rlat, "lon": rlon,
@@ -631,11 +654,12 @@ def _parse_overpass_elements(elements, clat, clon, radius_miles):
         if dist > radius_miles + 0.05:
             continue
         street = " ".join(x for x in [tags.get("addr:housenumber"), tags.get("addr:street")] if x)
-        addr_parts = [street, tags.get("addr:city"), tags.get("addr:postcode")]
+        address = _short_address(street, tags.get("addr:city"),
+                                 _state_code(tags.get("addr:state")))
         results.append({
             "name": name, "brand": tags.get("brand", ""),
             "lat": float(elat), "lon": float(elon),
-            "address": ", ".join(p for p in addr_parts if p),
+            "address": address,
             "phone": tags.get("phone") or tags.get("contact:phone") or "",
             "website": tags.get("website") or tags.get("contact:website") or "",
             "cuisine": tags.get("cuisine", ""),
