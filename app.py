@@ -773,13 +773,23 @@ label{font-weight:600}.muted{color:#94a3b8}.stars{color:#facc15;letter-spacing:2
 AUTOFILL_JS = """<script>
 (function(){
   var codeEl=document.getElementById('airport_code'),cityEl=document.getElementById('city');
+  var stateEl=document.getElementById('state');
   if(!codeEl||!cityEl)return;
   var db=null,loading=false;
+  function fillState(){
+    if(!stateEl)return;
+    var code=codeEl.value.trim().toUpperCase();
+    if(code.length<3)return;
+    fetch('/airport-info?code='+encodeURIComponent(code)).then(function(r){return r.json();}).then(function(d){
+      if(d.state){ stateEl.value=d.state; }
+    }).catch(function(){});
+  }
   function lookup(){
     var code=codeEl.value.trim().toUpperCase();
     if(code.length<3||!db)return;
     var city=db[code];
     if(city&&(!cityEl.value||cityEl.dataset.auto==='1')){cityEl.value=city;cityEl.dataset.auto='1';}
+    fillState();
   }
   function ensure(){
     if(db){lookup();return;}
@@ -1759,6 +1769,38 @@ def nearby_airports():
     found = airports_within(lat, lon, radius)
     return jsonify({"airports": [{"code": c, "city": ci, "name": n, "distance_mi": d}
                                  for c, ci, n, d in found]})
+
+
+# In-memory cache: airport code -> state code (from Nominatim reverse geocode).
+_AIRPORT_STATE_CACHE = {}
+
+
+@app.route("/airport-info")
+@login_required
+def airport_info():
+    """City + state for an airport code. State comes from a reverse geocode
+    of the airport's coordinates (cached in-memory after the first lookup)."""
+    code = request.args.get("code", "").strip().upper()
+    if not code or code not in AIRPORT_COORDS:
+        return jsonify({"error": "unknown code"}), 404
+    lat, lon, city, name = AIRPORT_COORDS[code]
+    state = _AIRPORT_STATE_CACHE.get(code)
+    if state is None:
+        params = urllib.parse.urlencode({
+            "lat": lat, "lon": lon, "format": "json", "addressdetails": 1})
+        try:
+            r = http_get_json(f"https://nominatim.openstreetmap.org/reverse?{params}")
+            addr = (r or {}).get("address", {})
+            state = (addr.get("ISO3166-2-lvl4") or "").replace("US-", "").upper()
+            if not state:
+                state = (addr.get("state_code") or addr.get("state") or "").strip().upper()
+                # Convert full state name to code.
+                if len(state) > 2:
+                    state = {v.upper(): k for k, v in US_STATES}.get(state, "")
+        except Exception:
+            state = ""
+        _AIRPORT_STATE_CACHE[code] = state or ""
+    return jsonify({"code": code, "city": city, "state": state, "name": name})
 
 
 @app.route("/airports-near-city")
