@@ -2715,12 +2715,13 @@ def at_location_section(kind, user, radius_options, default_radius):
         radius = int(radius_raw)
     except ValueError:
         radius = default_radius
-    # Hotels: 2/5/10, capped at 10. Restaurants and attractions: 5/10/20, capped at 20.
+    # Hotels, restaurants, attractions: 5/10/20 miles, capped at 20.
     if kind in ("restaurant", "attraction"):
         radius_options = [5, 10, 20]
         radius = max(1, min(radius, 20))
     else:
-        radius = max(1, min(radius, 10))
+        radius_options = [5, 10, 20]
+        radius = max(1, min(radius, 20))
     data = None
     gps_error = None
     if request.method == "POST" and request.form.get("gps") == "1":
@@ -2942,7 +2943,7 @@ def hotels():
     scope = request.args.get("scope", "in")
     sort = request.args.get("sort", "new")
     tag = request.args.get("tag", "")
-    card, data, _ = at_location_section("hotel", user, [2, 5, 10], 5)
+    card, data, _ = at_location_section("hotel", user, [5, 10, 20], 5)
     ext = external_results_html("hotel", data, user) if data else ""
     body = card + ext + saved_reviews_section("hotel", user, q, scope, sort, tag)
     return page("Hotels", user, body)
@@ -2955,7 +2956,7 @@ def restaurants():
     scope = request.args.get("scope", "in")
     sort = request.args.get("sort", "new")
     tag = request.args.get("tag", "")
-    card, data, _ = at_location_section("restaurant", user, [5, 10, 20], 20)
+    card, data, _ = at_location_section("restaurant", user, [5, 10, 20], 5)
     ext = external_results_html("restaurant", data, user) if data else ""
     body = card + ext + saved_reviews_section("restaurant", user, q, scope, sort, tag)
     return page("Restaurants", user, body)
