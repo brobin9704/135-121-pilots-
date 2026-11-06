@@ -1775,17 +1775,14 @@ def nearby_airports():
 _AIRPORT_STATE_CACHE = {}
 
 
-@app.route("/airport-info")
-@login_required
-def airport_info():
-    """City + state for an airport code. State comes from a reverse geocode
-    of the airport's coordinates (cached in-memory after the first lookup)."""
-    code = request.args.get("code", "").strip().upper()
+def airport_state(code):
+    """State code for an airport code (reverse geocode, cached). Returns "" when unknown."""
+    code = (code or "").strip().upper()
     if not code or code not in AIRPORT_COORDS:
-        return jsonify({"error": "unknown code"}), 404
-    lat, lon, city, name = AIRPORT_COORDS[code]
+        return ""
     state = _AIRPORT_STATE_CACHE.get(code)
     if state is None:
+        lat, lon, _city, _name = AIRPORT_COORDS[code]
         params = urllib.parse.urlencode({
             "lat": lat, "lon": lon, "format": "json", "addressdetails": 1})
         try:
@@ -1794,13 +1791,47 @@ def airport_info():
             state = (addr.get("ISO3166-2-lvl4") or "").replace("US-", "").upper()
             if not state:
                 state = (addr.get("state_code") or addr.get("state") or "").strip().upper()
-                # Convert full state name to code.
                 if len(state) > 2:
                     state = {v.upper(): k for k, v in US_STATES}.get(state, "")
         except Exception:
             state = ""
         _AIRPORT_STATE_CACHE[code] = state or ""
-    return jsonify({"code": code, "city": city, "state": state, "name": name})
+    return state
+
+
+def verify_checkin(code, city, state):
+    """Verify an airport code, city, and state agree. Returns (ok, error).
+
+    - Unknown code -> not ok.
+    - City must match the dataset city for that code.
+    - State, when given, must match the airport's state (reverse geocode).
+      If the state lookup fails (network), the state check is skipped.
+    """
+    code = (code or "").strip().upper()
+    city = (city or "").strip()
+    state = (state or "").strip().upper()
+    if not code or code not in AIRPORT_COORDS:
+        return False, f"Unknown airport code {code}."
+    _lat, _lon, db_city, _name = AIRPORT_COORDS[code]
+    if city.lower() != db_city.strip().lower():
+        return False, f"{code} is in {db_city}, not {city}."
+    if state:
+        real_state = airport_state(code)
+        if real_state and state != real_state:
+            return False, f"{code} is in {real_state}, not {state}."
+    return True, ""
+
+
+@app.route("/airport-info")
+@login_required
+def airport_info():
+    """City + state for an airport code. State comes from a reverse geocode
+    of the airport's coordinates (cached in-memory after the first lookup)."""
+    code = request.args.get("code", "").strip().upper()
+    if not code or code not in AIRPORT_COORDS:
+        return jsonify({"error": "unknown code"}), 404
+    _lat, _lon, city, name = AIRPORT_COORDS[code]
+    return jsonify({"code": code, "city": city, "state": airport_state(code), "name": name})
 
 
 @app.route("/airports-near-city")
@@ -2140,7 +2171,16 @@ def board():
         kind = kind if kind in ("hotel", "restaurant") else None
         start = request.form.get("start_date") or date.today().isoformat()
         end = request.form.get("end_date") or None
-        if place and kind:
+        # The airport code, city, and state must verify against each other
+        # before a check-in is saved.
+        verified = True
+        if not place:
+            verified, err = verify_checkin(code, city, state)
+            if not verified:
+                flash = err
+        if not verified:
+            pass  # flash already set; fall through to re-render the form.
+        elif place and kind:
             # From a search result: attach the hotel/restaurant to the current
             # check-in at this place instead of replacing the whole check-in.
             col = "hotel_place" if kind == "hotel" else "restaurant_place"
@@ -2153,36 +2193,40 @@ def board():
                     f"INSERT INTO checkins (user_id, airport_code, city, state, {col}, start_date, end_date) "
                     "VALUES (?,?,?,?,?,?,?)",
                     (user["id"], code, city, state, place, start, end))
+            db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
+                       (user["id"], code, city.strip().lower()))
+            db.commit()
+            return redirect(url_for("index"))
         else:
             # Main check-in form: a new check-in at a new place.
             db.execute(
                 "INSERT INTO checkins (user_id, airport_code, city, state, start_date, end_date) VALUES (?,?,?,?,?,?)",
                 (user["id"], code, city, state, start, end))
-        # A new place means old search results no longer apply.
-        db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
-                   (user["id"], code, city.strip().lower()))
-        db.commit()
-        # Friend nearby alerts go out only for a check-in that starts today —
-        # a future-dated check-in stays silent until its date arrives.
-        if start <= date.today().isoformat():
-            buds = []
-            for fr in db.execute(
-                    "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?",
-                    (user["id"],)).fetchall():
-                fc = current_checkin(fr["id"])
-                if fc and (fc["airport_code"].upper() == code
-                           or fc["city"].strip().lower() == city.strip().lower()):
-                    buds.append(fr)
-            if buds:
-                names = ", ".join(fr["name"] for fr in buds)
-                flask_flash(f"👥 {names} {'is' if len(buds) == 1 else 'are'} also checked in at {code} / {city}.")
-                for fr in buds:
-                    send_email(fr["email"], f"{user['name']} checked in at {code} / {city}",
-                               f"{user['name']} just checked in at {code} / {city}, where you are checked in too.\n\n"
-                               "Open Pilot & Crew Community to say hi.")
-        else:
-            flask_flash(f"Check-in saved for {start} — it will become your current check-in on that date.")
-        return redirect(url_for("index"))
+            # A new place means old search results no longer apply.
+            db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
+                       (user["id"], code, city.strip().lower()))
+            db.commit()
+            # Friend nearby alerts go out only for a check-in that starts today —
+            # a future-dated check-in stays silent until its date arrives.
+            if start <= date.today().isoformat():
+                buds = []
+                for fr in db.execute(
+                        "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?",
+                        (user["id"],)).fetchall():
+                    fc = current_checkin(fr["id"])
+                    if fc and (fc["airport_code"].upper() == code
+                               or fc["city"].strip().lower() == city.strip().lower()):
+                        buds.append(fr)
+                if buds:
+                    names = ", ".join(fr["name"] for fr in buds)
+                    flask_flash(f"👥 {names} {'is' if len(buds) == 1 else 'are'} also checked in at {code} / {city}.")
+                    for fr in buds:
+                        send_email(fr["email"], f"{user['name']} checked in at {code} / {city}",
+                                   f"{user['name']} just checked in at {code} / {city}, where you are checked in too.\n\n"
+                                   "Open Pilot & Crew Community to say hi.")
+            else:
+                flask_flash(f"Check-in saved for {start} — it will become your current check-in on that date.")
+            return redirect(url_for("index"))
     if request.method == "POST" and request.form.get("action") == "checkout":
         cur = current_checkin(user["id"])
         if cur:
@@ -2266,6 +2310,10 @@ def edit_checkin():
         restaurant = request.form.get("restaurant_place", "").strip() or None
         start = request.form.get("start_date") or checkin["start_date"]
         end = request.form.get("end_date") or None
+        ok, err = verify_checkin(code, city, state)
+        if not ok:
+            flask_flash(err)
+            return redirect(url_for("edit_checkin", id=checkin["id"]))
         db.execute(
             "UPDATE checkins SET airport_code=?, city=?, state=?, hotel_place=?, restaurant_place=?, "
             "start_date=?, end_date=? WHERE id=? AND user_id=? AND checked_out=0",
