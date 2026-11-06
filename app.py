@@ -839,18 +839,34 @@ FINDME_JS = """<script>
   var codeEl=document.getElementById('airport_code'),cityEl=document.getElementById('city');
   if(!btn||!codeEl||!cityEl)return;
   function say(t){ if(msg)msg.textContent=t; }
+  // Container for the airport list (created once).
+  var list=document.createElement('div'); list.id='nearby_airports';
+  msg.parentNode.insertBefore(list, msg.nextSibling);
   btn.addEventListener('click',function(){
     if(!navigator.geolocation){ say('Location is not supported on this device. Type the airport code instead.'); return; }
     btn.disabled=true; var orig=btn.textContent; btn.textContent='Locating…';
+    list.innerHTML='';
     function done(){ btn.disabled=false; btn.textContent=orig; }
     navigator.geolocation.getCurrentPosition(function(pos){
-      fetch('/nearest_airport?lat='+pos.coords.latitude+'&lon='+pos.coords.longitude)
+      fetch('/nearby-airports?lat='+pos.coords.latitude+'&lon='+pos.coords.longitude+'&radius=50')
         .then(function(r){ return r.json(); })
         .then(function(d){
-          if(d.code){
-            codeEl.value=d.code; cityEl.value=d.city; cityEl.dataset.auto='1';
-            say('Nearest airport: '+d.code+' ('+d.name+'), '+d.distance_mi+' mi away.');
-          } else { say('No airport found near you. Type the airport code instead.'); }
+          var aps=d.airports||[];
+          if(!aps.length){ say('No airports within 50 miles. Type the airport code instead.'); done(); return; }
+          say('Airports near you (tap one):');
+          var html='<div style="margin-top:8px">';
+          aps.forEach(function(a){
+            html+='<button type="button" class="ap-pick" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font-size:15px"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
+          });
+          html+='</div>';
+          list.innerHTML=html;
+          list.querySelectorAll('.ap-pick').forEach(function(b){
+            b.addEventListener('click',function(){
+              codeEl.value=b.dataset.code; cityEl.value=b.dataset.city; cityEl.dataset.auto='1';
+              say('Selected '+b.dataset.code+'.');
+              list.innerHTML='';
+            });
+          });
           done();
         })
         .catch(function(){ say('Lookup failed. Type the airport code instead.'); done(); });
@@ -1561,6 +1577,50 @@ def index():
     return page("Home", user, body, flash=" ".join(notes) if notes else None)
 
 # ---------------------------------------------------------------- board
+def airports_within(lat, lon, radius_miles=50):
+    """Airports within radius_miles, sorted by distance. Each is (code, city, name, distance_mi)."""
+    if not AIRPORT_COORDS:
+        return []
+    out = []
+    for code, (alat, alon, city, name) in AIRPORT_COORDS.items():
+        p1, p2 = math.radians(lat), math.radians(alat)
+        dphi = math.radians(alat - lat)
+        dlmb = math.radians(alon - lon)
+        a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+        d = 2 * 3958.8 * math.asin(math.sqrt(a))
+        if d <= radius_miles:
+            out.append((code, city, name, round(d, 1)))
+    out.sort(key=lambda x: x[3])
+    return out
+
+
+def airports_near_city(city, radius_miles=50):
+    """Airports within radius_miles of a city name (from the bundled dataset).
+
+    Finds the city in the airport data, uses its coordinates as the centre,
+    then returns all airports within the radius, sorted by distance.
+    Returns ([(code, city, name, dist)], matched_city) or ([], None).
+    """
+    city = (city or "").strip().lower()
+    if not city or not AIRPORT_COORDS:
+        return [], None
+    # Find the first airport whose city matches (exact, then substring).
+    centre = None
+    for code, (alat, alon, c, name) in AIRPORT_COORDS.items():
+        if c.strip().lower() == city:
+            centre = (alat, alon, c)
+            break
+    if centre is None:
+        for code, (alat, alon, c, name) in AIRPORT_COORDS.items():
+            if city in c.strip().lower():
+                centre = (alat, alon, c)
+                break
+    if centre is None:
+        return [], None
+    lat, lon, matched = centre
+    return airports_within(lat, lon, radius_miles), matched
+
+
 def nearest_airport_for(lat, lon):
     """(code, city, name, distance_mi) of the nearest bundled airport, or Nones."""
     if not AIRPORT_COORDS:
@@ -1579,6 +1639,21 @@ def nearest_airport_for(lat, lon):
         return None, None, None, None
     code, city, name = best
     return code, city, name, round(best_d, 1)
+
+
+@app.route("/nearby-airports")
+@login_required
+def nearby_airports():
+    """Airports within 50 miles of a tap-initiated GPS fix. Nothing is stored."""
+    try:
+        lat = float(request.args.get("lat", ""))
+        lon = float(request.args.get("lon", ""))
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad coordinates"}), 400
+    radius = float(request.args.get("radius", "50"))
+    found = airports_within(lat, lon, radius)
+    return jsonify({"airports": [{"code": c, "city": ci, "name": n, "distance_mi": d}
+                                 for c, ci, n, d in found]})
 
 
 @app.route("/nearest_airport")
