@@ -1579,10 +1579,14 @@ def index():
 
 # ---------------------------------------------------------------- board
 def airports_within(lat, lon, radius_miles=20):
-    """Airports within radius_miles, sorted by distance. Each is (code, city, name, distance_mi)."""
+    """Airports within radius_miles, sorted by distance. Each is (code, city, name, distance_mi).
+
+    Dedupes by coordinates — the dataset lists the same airport under both its
+    ICAO (KCKB) and IATA (CKB) codes. Prefers the ICAO (K-prefixed) code.
+    """
     if not AIRPORT_COORDS:
         return []
-    out = []
+    by_coord = {}
     for code, (alat, alon, city, name) in AIRPORT_COORDS.items():
         p1, p2 = math.radians(lat), math.radians(alat)
         dphi = math.radians(alat - lat)
@@ -1590,7 +1594,12 @@ def airports_within(lat, lon, radius_miles=20):
         a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
         d = 2 * 3958.8 * math.asin(math.sqrt(a))
         if d <= radius_miles:
-            out.append((code, city, name, round(d, 1)))
+            key = (round(alat, 4), round(alon, 4))
+            existing = by_coord.get(key)
+            # Prefer ICAO (K-prefixed, 4-letter) over IATA (3-letter).
+            if existing is None or (len(code) == 4 and code.startswith("K") and len(existing[0]) != 4):
+                by_coord[key] = (code, city, name, round(d, 1))
+    out = list(by_coord.values())
     out.sort(key=lambda x: x[3])
     return out
 
