@@ -913,7 +913,7 @@ CITY_AIRPORTS_JS = """<script>
   var timer=null;
   function lookup(){
     var city=cityEl.value.trim(),state=stateEl?stateEl.value.trim():'';
-    if(city.length<3){ box.innerHTML=''; return; }
+    if(city.length<3||!state){ box.innerHTML=''; return; }
     fetch('/airports-near-city?city='+encodeURIComponent(city)+'&state='+encodeURIComponent(state))
       .then(function(r){ return r.json(); })
       .then(function(d){
@@ -1808,14 +1808,15 @@ def airport_info():
 def airports_near_city_route():
     """Airports within 20 miles of a typed city + state.
 
-    The city and state are verified against Nominatim first — if the city
-    isn't in that state, no airports are returned (verified: false).
+    Both city and state are required before the search begins. The city and
+    state are verified against Nominatim first — if the city isn't in that
+    state, no airports are returned (verified: false).
     """
     city = request.args.get("city", "").strip()
     state = request.args.get("state", "").strip()
-    if not city:
+    if not city or not state:
         return jsonify({"airports": [], "matched_city": None, "verified": False})
-    found, matched, verified = airports_near_city(city, state or None)
+    found, matched, verified = airports_near_city(city, state)
     return jsonify({"airports": [{"code": c, "city": ci, "name": n, "distance_mi": d}
                                  for c, ci, n, d in found],
                     "matched_city": matched, "verified": verified})
