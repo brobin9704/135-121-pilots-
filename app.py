@@ -130,7 +130,7 @@ SQLITE_SCHEMA = """
     CREATE TABLE IF NOT EXISTS checkins (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        airport_code TEXT NOT NULL, city TEXT NOT NULL, place_name TEXT, kind TEXT,
+        airport_code TEXT NOT NULL, city TEXT NOT NULL, state TEXT, place_name TEXT, kind TEXT,
         hotel_place TEXT, restaurant_place TEXT,
         start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -212,7 +212,7 @@ POSTGRES_SCHEMA = """
     CREATE TABLE IF NOT EXISTS checkins (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        airport_code TEXT NOT NULL, city TEXT NOT NULL, place_name TEXT, kind TEXT,
+        airport_code TEXT NOT NULL, city TEXT NOT NULL, state TEXT, place_name TEXT, kind TEXT,
         hotel_place TEXT, restaurant_place TEXT,
         start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -334,6 +334,7 @@ def init_db():
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS kind TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS hotel_place TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS restaurant_place TEXT")
+            cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS state TEXT")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pilot'")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT 'tabs'")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS phone TEXT")
@@ -362,7 +363,7 @@ def init_db():
             db.execute("ALTER TABLE checkins ADD COLUMN kind TEXT")
         except sqlite3.OperationalError:
             pass  # column already exists
-        for _col in ("hotel_place", "restaurant_place"):
+        for _col in ("hotel_place", "restaurant_place", "state"):
             try:
                 db.execute(f"ALTER TABLE checkins ADD COLUMN {_col} TEXT")
             except sqlite3.OperationalError:
@@ -848,7 +849,7 @@ FINDME_JS = """<script>
     list.innerHTML='';
     function done(){ btn.disabled=false; btn.textContent=orig; }
     navigator.geolocation.getCurrentPosition(function(pos){
-      fetch('/nearby-airports?lat='+pos.coords.latitude+'&lon='+pos.coords.longitude+'&radius=50')
+      fetch('/nearby-airports?lat='+pos.coords.latitude+'&lon='+pos.coords.longitude+'&radius=20')
         .then(function(r){ return r.json(); })
         .then(function(d){
           var aps=d.airports||[];
@@ -1577,7 +1578,7 @@ def index():
     return page("Home", user, body, flash=" ".join(notes) if notes else None)
 
 # ---------------------------------------------------------------- board
-def airports_within(lat, lon, radius_miles=50):
+def airports_within(lat, lon, radius_miles=20):
     """Airports within radius_miles, sorted by distance. Each is (code, city, name, distance_mi)."""
     if not AIRPORT_COORDS:
         return []
@@ -1594,7 +1595,7 @@ def airports_within(lat, lon, radius_miles=50):
     return out
 
 
-def airports_near_city(city, radius_miles=50):
+def airports_near_city(city, radius_miles=20):
     """Airports within radius_miles of a city name (from the bundled dataset).
 
     Finds the city in the airport data, uses its coordinates as the centre,
@@ -1650,7 +1651,7 @@ def nearby_airports():
         lon = float(request.args.get("lon", ""))
     except (TypeError, ValueError):
         return jsonify({"error": "bad coordinates"}), 400
-    radius = float(request.args.get("radius", "50"))
+    radius = float(request.args.get("radius", "20"))
     found = airports_within(lat, lon, radius)
     return jsonify({"airports": [{"code": c, "city": ci, "name": n, "distance_mi": d}
                                  for c, ci, n, d in found]})
@@ -1718,7 +1719,14 @@ def current_checkin_html(checkin):
         # Legacy rows (pre hotel/restaurant split).
         kind = checkin["kind"] or "hotel"
         status_lines.append(f"{_place_link(checkin['place_name'], kind)} {_slot_checkout_form(kind, kind)}")
-    status_lines.append(f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}')
+    loc = f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}'
+    try:
+        _st = checkin["state"]
+    except (KeyError, IndexError):
+        _st = None
+    if _st:
+        loc += f', {esc(_st)}'
+    status_lines.append(loc)
     status_html = "<br>".join(status_lines)
     return f"""<div class="card">{head}
       <p><strong>{status_html}</strong></p>
@@ -1962,6 +1970,7 @@ def board():
         place = request.form.get("place_name", "").strip() or None
         code = request.form.get("airport_code", "").strip().upper()
         city = request.form.get("city", "").strip()
+        state = request.form.get("state", "").strip().upper() or None
         kind = request.form.get("kind", "").strip()
         kind = kind if kind in ("hotel", "restaurant") else None
         start = request.form.get("start_date") or date.today().isoformat()
@@ -1976,14 +1985,14 @@ def board():
                 db.execute(f"UPDATE checkins SET {col}=? WHERE id=?", (place, cur["id"]))
             else:
                 db.execute(
-                    f"INSERT INTO checkins (user_id, airport_code, city, {col}, start_date, end_date) "
-                    "VALUES (?,?,?,?,?,?)",
-                    (user["id"], code, city, place, start, end))
+                    f"INSERT INTO checkins (user_id, airport_code, city, state, {col}, start_date, end_date) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (user["id"], code, city, state, place, start, end))
         else:
             # Main check-in form: a new check-in at a new place.
             db.execute(
-                "INSERT INTO checkins (user_id, airport_code, city, start_date, end_date) VALUES (?,?,?,?,?)",
-                (user["id"], code, city, start, end))
+                "INSERT INTO checkins (user_id, airport_code, city, state, start_date, end_date) VALUES (?,?,?,?,?,?)",
+                (user["id"], code, city, state, start, end))
         # A new place means old search results no longer apply.
         db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
                    (user["id"], code, city.strip().lower()))
@@ -2035,6 +2044,7 @@ def board():
       <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + ' on ' + document.getElementsByName('start_date')[0].value + '?')"><input type="hidden" name="action" value="checkin">
       <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
       <label>City</label><input name="city" id="city" placeholder="Tulsa" required>
+      <label>State</label><input name="state" id="state" placeholder="OK" maxlength="2" style="width:80px" autocomplete="off">
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
       <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}
@@ -2084,14 +2094,15 @@ def edit_checkin():
     if request.method == "POST":
         code = request.form.get("airport_code", "").strip().upper()
         city = request.form.get("city", "").strip()
+        state = request.form.get("state", "").strip().upper() or None
         hotel = request.form.get("hotel_place", "").strip() or None
         restaurant = request.form.get("restaurant_place", "").strip() or None
         start = request.form.get("start_date") or checkin["start_date"]
         end = request.form.get("end_date") or None
         db.execute(
-            "UPDATE checkins SET airport_code=?, city=?, hotel_place=?, restaurant_place=?, "
+            "UPDATE checkins SET airport_code=?, city=?, state=?, hotel_place=?, restaurant_place=?, "
             "start_date=?, end_date=? WHERE id=? AND user_id=? AND checked_out=0",
-            (code, city, hotel, restaurant, start, end, checkin["id"], user["id"]))
+            (code, city, state, hotel, restaurant, start, end, checkin["id"], user["id"]))
         # A new place means old cached search results no longer apply.
         db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
                    (user["id"], code, city.strip().lower()))
@@ -2104,6 +2115,7 @@ def edit_checkin():
       <input type="hidden" name="id" value="{checkin['id']}">
       <label>Airport code</label><input name="airport_code" value="{esc(checkin['airport_code'] or '')}" required>
       <label>City</label><input name="city" value="{esc(checkin['city'] or '')}" required>
+      <label>State</label><input name="state" value="{esc(checkin['state'] or '')}" maxlength="2" style="width:80px">
       <label>Hotel</label><input name="hotel_place" value="{esc(checkin['hotel_place'] or '')}" placeholder="Hotel (optional)">
       <label>Restaurant</label><input name="restaurant_place" value="{esc(checkin['restaurant_place'] or '')}" placeholder="Restaurant (optional)">
       <label>Start date</label><input type="date" name="start_date" value="{esc(checkin['start_date'] or '')}">
