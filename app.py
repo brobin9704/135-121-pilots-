@@ -915,28 +915,50 @@ FINDME_JS = """<script>
 CITY_DROPDOWN_JS = """<script>
 (function(){
   var stateEl=document.getElementById('state'),cityEl=document.getElementById('city');
-  var listEl=document.getElementById('city_list');
+  var suggEl=document.getElementById('city_suggest');
   if(!stateEl||!cityEl)return;
+  var allCities=[];
+  function showSuggest(){
+    if(!suggEl)return;
+    var q=cityEl.value.trim().toLowerCase();
+    if(!q||!allCities.length){ suggEl.innerHTML=''; return; }
+    var matches=[];
+    for(var i=0;i<allCities.length&&matches.length<8;i++){
+      if(allCities[i].toLowerCase().indexOf(q)===0)matches.push(allCities[i]);
+    }
+    if(!matches.length){ suggEl.innerHTML=''; return; }
+    var html='';
+    matches.forEach(function(c){
+      html+='<button type="button" class="city-opt" data-city="'+c.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-size:15px;margin:4px 0">'+c+'</button>';
+    });
+    suggEl.innerHTML=html;
+    suggEl.querySelectorAll('.city-opt').forEach(function(b){
+      b.addEventListener('click',function(){
+        cityEl.value=b.dataset.city;
+        suggEl.innerHTML='';
+        cityEl.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+    });
+  }
   function loadCities(keep){
     var state=stateEl.value.trim();
-    if(!state){
-      if(listEl)listEl.innerHTML='';
-      return;
-    }
+    if(!state){ allCities=[]; if(suggEl)suggEl.innerHTML=''; return; }
     fetch('/cities-in-state?state='+encodeURIComponent(state))
       .then(function(r){ return r.json(); })
       .then(function(d){
-        var cities=d.cities||[];
-        var html='';
-        cities.forEach(function(c){
-          html+='<option value="'+c.replace(/"/g,'&quot;')+'">';
-        });
-        if(listEl)listEl.innerHTML=html;
+        allCities=d.cities||[];
         if(keep){ cityEl.value=keep; }
       })
       .catch(function(){});
   }
-  stateEl.addEventListener('change',function(){ cityEl.value=''; loadCities(null); });
+  stateEl.addEventListener('change',function(){ cityEl.value=''; allCities=[]; loadCities(null); });
+  cityEl.addEventListener('input',showSuggest);
+  cityEl.addEventListener('focus',showSuggest);
+  document.addEventListener('click',function(e){
+    if(suggEl&&!suggEl.contains(e.target)&&e.target!==cityEl)suggEl.innerHTML='';
+  });
+  // If the state is already set (edit form), load its cities now.
+  if(stateEl.value.trim())loadCities(null);
   // Exposed for the airport-code autofill, which sets state + city together.
   window.loadCitiesForState=loadCities;
 })();
@@ -2290,7 +2312,7 @@ def board():
       <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + ' on ' + document.getElementsByName('start_date')[0].value + '?')"><input type="hidden" name="action" value="checkin">
       <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
       <label>State</label>{_state_dd}
-      <label>City</label><input name="city" id="city" list="city_list" placeholder="Start typing a city" autocomplete="off" required><datalist id="city_list"></datalist>
+      <label>City</label><input name="city" id="city" placeholder="Start typing a city" autocomplete="off" required><div id="city_suggest"></div>
       <div id="city_airports"></div>
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
@@ -2367,13 +2389,9 @@ def edit_checkin():
     _edit_state_dd = state_dropdown(_cur_state)
     # Pre-populate the city type-ahead with the current state's cities.
     _cur_city = checkin["city"] or ""
-    _city_opts = []
-    if _cur_state:
-        for _c in sorted(load_us_cities().get(_cur_state, {}).keys()):
-            _city_opts.append(f'<option value="{esc(_c)}">')
-    _edit_city_dd = (f'<input name="city" id="city" list="city_list" value="{esc(_cur_city)}" '
+    _edit_city_dd = (f'<input name="city" id="city" value="{esc(_cur_city)}" '
                      f'placeholder="Start typing a city" autocomplete="off" required>'
-                     f'<datalist id="city_list">' + "".join(_city_opts) + '</datalist>')
+                     f'<div id="city_suggest"></div>')
     body = f"""
       <div class="card"><h2>Edit check-in</h2>
       <form method="post">
