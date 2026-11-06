@@ -908,7 +908,11 @@ CITY_AIRPORTS_JS = """<script>
       .then(function(r){ return r.json(); })
       .then(function(d){
         var aps=d.airports||[];
-        if(!aps.length){ box.innerHTML=''; return; }
+        if(!aps.length){
+          if(state && !d.verified){ box.innerHTML='<p class="muted" style="margin:8px 0">Could not find '+city+' in that state — check the spelling.</p>'; }
+          else { box.innerHTML=''; }
+          return;
+        }
         var html='<p class="muted" style="margin:8px 0 4px">Airports near '+city+(state?', '+state:'')+' (tap one):</p>';
         aps.forEach(function(a){
           html+='<button type="button" class="city-ap" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-size:15px"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
@@ -1664,31 +1668,62 @@ def airports_within(lat, lon, radius_miles=20):
     return out
 
 
-def airports_near_city(city, radius_miles=20):
-    """Airports within radius_miles of a city name (from the bundled dataset).
+def airports_near_city(city, state=None, radius_miles=20):
+    """Airports within radius_miles of a city (and state, when given).
 
-    Finds the city in the airport data, uses its coordinates as the centre,
-    then returns all airports within the radius, sorted by distance.
-    Returns ([(code, city, name, dist)], matched_city) or ([], None).
+    Verifies the city + state against Nominatim first: geocodes "city, state",
+    checks the returned address really is in that state, and uses those
+    coordinates as the centre. Falls back to the bundled dataset city match
+    when no state is given or the geocode fails.
+
+    Returns ([(code, city, name, dist)], matched_city, verified_bool).
+    verified_bool is True only when Nominatim confirmed the city is in the state.
     """
-    city = (city or "").strip().lower()
+    city = (city or "").strip()
+    state = (state or "").strip().upper()
     if not city or not AIRPORT_COORDS:
-        return [], None
-    # Find the first airport whose city matches (exact, then substring).
+        return [], None, False
+    # --- Verify city + state via Nominatim when a state is given. ---
+    if state:
+        state_name = dict(US_STATES).get(state, state)
+        params = urllib.parse.urlencode({
+            "q": f"{city}, {state_name}", "format": "json",
+            "addressdetails": 1, "limit": 5})
+        try:
+            results = http_get_json(f"{NOMINATIM_URL}?{params}")
+        except Exception:
+            results = []
+        for r in (results or []):
+            addr = r.get("address", {})
+            r_state = (addr.get("state_code") or addr.get("state") or "").strip().upper()
+            r_city = (addr.get("city") or addr.get("town") or addr.get("village")
+                      or addr.get("municipality") or "").strip().lower()
+            # State must match (code or name); city must match when Nominatim gives one.
+            state_ok = (r_state == state or r_state == state_name.upper())
+            city_ok = (not r_city or r_city == city.lower())
+            if state_ok and city_ok:
+                lat, lon = float(r["lat"]), float(r["lon"])
+                matched = addr.get("city") or addr.get("town") or city
+                return airports_within(lat, lon, radius_miles), matched, True
+        # No Nominatim hit confirmed the city in this state — do not fall back
+        # to a dataset match in a different state. Return empty + unverified.
+        return [], None, False
+    # --- No state: dataset city match (exact, then substring). ---
+    cl = city.lower()
     centre = None
     for code, (alat, alon, c, name) in AIRPORT_COORDS.items():
-        if c.strip().lower() == city:
+        if c.strip().lower() == cl:
             centre = (alat, alon, c)
             break
     if centre is None:
         for code, (alat, alon, c, name) in AIRPORT_COORDS.items():
-            if city in c.strip().lower():
+            if cl in c.strip().lower():
                 centre = (alat, alon, c)
                 break
     if centre is None:
-        return [], None
+        return [], None, False
     lat, lon, matched = centre
-    return airports_within(lat, lon, radius_miles), matched
+    return airports_within(lat, lon, radius_miles), matched, False
 
 
 def nearest_airport_for(lat, lon):
@@ -1729,17 +1764,19 @@ def nearby_airports():
 @app.route("/airports-near-city")
 @login_required
 def airports_near_city_route():
-    """Airports within 20 miles of a typed city (and optional state)."""
+    """Airports within 20 miles of a typed city + state.
+
+    The city and state are verified against Nominatim first — if the city
+    isn't in that state, no airports are returned (verified: false).
+    """
     city = request.args.get("city", "").strip()
     state = request.args.get("state", "").strip()
     if not city:
-        return jsonify({"airports": [], "matched_city": None})
-    found, matched = airports_near_city(city)
-    # Filter by state if given (match airport city+state via dataset city name only
-    # — the dataset has no state column, so this is a best-effort filter).
+        return jsonify({"airports": [], "matched_city": None, "verified": False})
+    found, matched, verified = airports_near_city(city, state or None)
     return jsonify({"airports": [{"code": c, "city": ci, "name": n, "distance_mi": d}
                                  for c, ci, n, d in found],
-                    "matched_city": matched})
+                    "matched_city": matched, "verified": verified})
 
 
 @app.route("/nearest_airport")
