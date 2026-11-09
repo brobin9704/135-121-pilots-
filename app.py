@@ -1737,8 +1737,6 @@ def admin():
     for c in db.execute("SELECT * FROM checkins ORDER BY created_at DESC, id DESC").fetchall():
         if c["user_id"] not in current_by_user and is_current(c):
             current_by_user[c["user_id"]] = c
-    # user id -> name/email for the login rows (users query above lacks ids).
-    ids = {r["email"]: r["id"] for r in db.execute("SELECT id, email FROM users").fetchall()}
     def _checkin_text(uid):
         c = current_by_user.get(uid)
         if not c:
@@ -1751,8 +1749,7 @@ def admin():
         f"<li>{esc(u['name'])} — {esc(u['email'])} "
         f"({esc(u['role'] or 'pilot').title()} · {esc(u['airline'])} · {esc(u['base'])} · {esc(u['aircraft'])}) "
         f"<span class='muted'>joined {esc(str(u['created_at'] or ''))} · "
-        f"last login {_fmt_login_ts(u['last_login'])} · "
-        f"{esc(_checkin_text(ids.get(u['email'])))}</span></li>"
+        f"last login {_fmt_login_ts(u['last_login'])}</span></li>"
         for u in users)
     # One row per user: their latest login only.
     recent = db.execute(
