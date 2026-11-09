@@ -1767,16 +1767,6 @@ def admin():
         f"<li>{_fmt_login_ts(r['last_login'])} — {esc(r['name'])} ({esc(r['email'])}) · "
         f"{esc(_checkin_text(r['uid']))}</li>"
         for r in recent)
-    # Full history: every login event, newest first.
-    history = db.execute(
-        "SELECT le.logged_in_at, u.name, u.email FROM login_events le "
-        "JOIN users u ON u.id = le.user_id "
-        "ORDER BY le.logged_in_at DESC LIMIT 500").fetchall()
-    history_rows = "".join(
-        f"<li>{_fmt_login_ts(r['logged_in_at'])} — {esc(r['name'])} ({esc(r['email'])})</li>"
-        for r in history)
-    history_note = ("Showing latest 500." if n_logins > 500
-                    else f"{n_logins} total.")
     body = (f'<div class="card"><h2>App stats</h2>'
             f'<p><strong>{len(users)}</strong> registered users · '
             f'<strong>{n_checkins}</strong> check-ins · <strong>{n_reviews}</strong> reviews · '
@@ -1784,10 +1774,7 @@ def admin():
             f'<ul>{rows}</ul></div>'
             f'<div class="card"><h2>Recent logins</h2>'
             f'<p class="muted">One row per user — their latest login. Logins are recorded from the Nov 8 update onward; logins before it were not tracked.</p>'
-            f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul></div>'
-            f'<div class="card"><h2>Login history</h2>'
-            f'<p class="muted">Every login, newest first. {history_note}</p>'
-            f'<ul>{history_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul></div>')
+            f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul></div>')
     return page("Admin", user, body)
 
 def _role_options(selected):
