@@ -1379,9 +1379,15 @@ def login():
         if row and check_password_hash(row["password_hash"], request.form.get("password", "")):
             import time
             db = get_db()
-            db.execute("INSERT INTO login_events (user_id, logged_in_at) VALUES (?,?)",
-                       (row["id"], int(time.time())))
-            db.commit()
+            # One tap can submit the form twice (double-tap before the redirect).
+            # Record the login only if this user has no event in the last minute.
+            now = int(time.time())
+            last = db.execute("SELECT MAX(logged_in_at) AS t FROM login_events WHERE user_id = ?",
+                              (row["id"],)).fetchone()["t"]
+            if not last or now - last >= 60:
+                db.execute("INSERT INTO login_events (user_id, logged_in_at) VALUES (?,?)",
+                           (row["id"], now))
+                db.commit()
             session["user_id"] = row["id"]
             return redirect(url_for("index"))
         return login_page(error="Email or password did not match.")
@@ -1660,7 +1666,7 @@ def login_page(error=None):
       <p class="reg"><a href="/forgot-password">Forgot password?</a></p>
       <p class="reg">No account yet? <a href="/register">Register</a></p></div>
       {ATC_AUDIO_HTML}<script>{ATC_AUDIO_JS}</script>
-      <script>document.getElementById('login_form').addEventListener('keydown',function(e){{if(e.key==='Enter'){{e.preventDefault();}}}});</script>
+      <script>var _lf=document.getElementById('login_form');_lf.addEventListener('keydown',function(e){{if(e.key==='Enter'){{e.preventDefault();}}}});_lf.addEventListener('submit',function(){{var b=this.querySelector('button[type=submit]');if(b){{b.disabled=true;}}}});</script>
       </body></html>""")
 
 @app.route("/logout")
