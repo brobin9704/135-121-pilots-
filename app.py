@@ -1662,11 +1662,11 @@ def login_page(error=None):
       {err}<form method="post" id="login_form">
       <label>Email</label><input type="email" name="email" required autocomplete="email">
       <label>Password</label><input type="password" name="password" required autocomplete="current-password">
-      <button type="submit">Log in</button></form>
+      <button type="button" id="login_btn">Log in</button></form>
       <p class="reg"><a href="/forgot-password">Forgot password?</a></p>
       <p class="reg">No account yet? <a href="/register">Register</a></p></div>
       {ATC_AUDIO_HTML}<script>{ATC_AUDIO_JS}</script>
-      <script>var _lf=document.getElementById('login_form');_lf.addEventListener('keydown',function(e){{if(e.key==='Enter'){{e.preventDefault();}}}});_lf.addEventListener('submit',function(){{var b=this.querySelector('button[type=submit]');if(b){{b.disabled=true;}}}});</script>
+      <script>var _lf=document.getElementById('login_form');var _lb=document.getElementById('login_btn');_lf.addEventListener('keydown',function(e){{if(e.key==='Enter'){{e.preventDefault();}}}});_lb.addEventListener('click',function(){{if(_lf.checkValidity()){{_lb.disabled=true;_lf.submit();}}else{{_lf.reportValidity();}}}});</script>
       </body></html>""")
 
 @app.route("/logout")
