@@ -228,8 +228,7 @@ SQLITE_SCHEMA = """
     CREATE TABLE IF NOT EXISTS login_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        logged_in_at INTEGER NOT NULL,
-        ip TEXT
+        logged_in_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_login_events_user ON login_events(user_id, logged_in_at);
 """
@@ -317,8 +316,7 @@ POSTGRES_SCHEMA = """
     CREATE TABLE IF NOT EXISTS login_events (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        logged_in_at INTEGER NOT NULL,
-        ip TEXT
+        logged_in_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_login_events_user ON login_events(user_id, logged_in_at);
 """
@@ -371,6 +369,8 @@ def init_db():
             # xact lock releases automatically on commit.
             cur.execute("SELECT pg_advisory_xact_lock(987654321)")
             cur.execute(POSTGRES_SCHEMA)
+            # Login events no longer store IP addresses.
+            cur.execute("ALTER TABLE login_events DROP COLUMN IF EXISTS ip")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS place_name TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS kind TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS hotel_place TEXT")
@@ -428,6 +428,10 @@ def init_db():
             pass  # column already exists
         db.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
         db.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
+        # Login events no longer store IP addresses.
+        _le_cols = [r[1] for r in db.execute("PRAGMA table_info(login_events)").fetchall()]
+        if "ip" in _le_cols:
+            db.execute("ALTER TABLE login_events DROP COLUMN ip")
         db.commit()
         db.close()
 
@@ -1375,18 +1379,13 @@ def login():
         if row and check_password_hash(row["password_hash"], request.form.get("password", "")):
             import time
             db = get_db()
-            db.execute("INSERT INTO login_events (user_id, logged_in_at, ip) VALUES (?,?,?)",
-                       (row["id"], int(time.time()), _client_ip()))
+            db.execute("INSERT INTO login_events (user_id, logged_in_at) VALUES (?,?)",
+                       (row["id"], int(time.time())))
             db.commit()
             session["user_id"] = row["id"]
             return redirect(url_for("index"))
         return login_page(error="Email or password did not match.")
     return login_page()
-
-def _client_ip():
-    """First address in the forwarded chain (Render's proxy), else the peer."""
-    route = request.access_route
-    return route[0] if route else (request.remote_addr or "")
 
 def _fmt_login_ts(ts):
     """Epoch seconds -> 'YYYY-MM-DD HH:MM UTC'; None -> 'never'."""
@@ -1733,19 +1732,36 @@ def admin():
     n_checkins = db.execute("SELECT count(*) AS n FROM checkins").fetchone()["n"]
     n_reviews = db.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"]
     n_logins = db.execute("SELECT count(*) AS n FROM login_events").fetchone()["n"]
+    # Current check-in per user (newest current row wins).
+    current_by_user = {}
+    for c in db.execute("SELECT * FROM checkins ORDER BY created_at DESC, id DESC").fetchall():
+        if c["user_id"] not in current_by_user and is_current(c):
+            current_by_user[c["user_id"]] = c
+    # user id -> name/email for the login rows (users query above lacks ids).
+    ids = {r["email"]: r["id"] for r in db.execute("SELECT id, email FROM users").fetchall()}
+    def _checkin_text(uid):
+        c = current_by_user.get(uid)
+        if not c:
+            return "no current check-in"
+        label = f"{c['airport_code']} · {c['city']}"
+        if c["state"]:
+            label += f", {c['state']}"
+        return f"checked in at {label}"
     rows = "".join(
         f"<li>{esc(u['name'])} — {esc(u['email'])} "
         f"({esc(u['role'] or 'pilot').title()} · {esc(u['airline'])} · {esc(u['base'])} · {esc(u['aircraft'])}) "
         f"<span class='muted'>joined {esc(str(u['created_at'] or ''))} · "
-        f"last login {_fmt_login_ts(u['last_login'])}</span></li>"
+        f"last login {_fmt_login_ts(u['last_login'])} · "
+        f"{esc(_checkin_text(ids.get(u['email'])))}</span></li>"
         for u in users)
+    # One row per user: their latest login only.
     recent = db.execute(
-        "SELECT le.logged_in_at, le.ip, u.name, u.email FROM login_events le "
-        "JOIN users u ON u.id = le.user_id "
-        "ORDER BY le.logged_in_at DESC LIMIT 100").fetchall()
+        "SELECT u.id AS uid, u.name, u.email, MAX(le.logged_in_at) AS last_login "
+        "FROM login_events le JOIN users u ON u.id = le.user_id "
+        "GROUP BY u.id ORDER BY last_login DESC LIMIT 100").fetchall()
     login_rows = "".join(
-        f"<li>{_fmt_login_ts(r['logged_in_at'])} — {esc(r['name'])} ({esc(r['email'])})"
-        f"{' · ' + esc(r['ip']) if r['ip'] else ''}</li>"
+        f"<li>{_fmt_login_ts(r['last_login'])} — {esc(r['name'])} ({esc(r['email'])}) · "
+        f"{esc(_checkin_text(r['uid']))}</li>"
         for r in recent)
     body = (f'<div class="card"><h2>App stats</h2>'
             f'<p><strong>{len(users)}</strong> registered users · '
@@ -1753,7 +1769,7 @@ def admin():
             f'<strong>{n_logins}</strong> logins recorded</p>'
             f'<ul>{rows}</ul></div>'
             f'<div class="card"><h2>Recent logins</h2>'
-            f'<p class="muted">Newest first. Logins are recorded from now on — logins before this update were not tracked.</p>'
+            f'<p class="muted">One row per user — their latest login. Logins are recorded from the Nov 8 update onward; logins before it were not tracked.</p>'
             f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul></div>')
     return page("Admin", user, body)
 
