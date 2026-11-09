@@ -19,7 +19,7 @@ import os
 import sqlite3
 import urllib.parse
 import urllib.request
-from datetime import date
+from datetime import date, datetime, timezone
 
 try:
     from PIL import Image
@@ -225,6 +225,13 @@ SQLITE_SCHEMA = """
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, recipient_id);
+    CREATE TABLE IF NOT EXISTS login_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        logged_in_at INTEGER NOT NULL,
+        ip TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_login_events_user ON login_events(user_id, logged_in_at);
 """
 
 POSTGRES_SCHEMA = """
@@ -307,6 +314,13 @@ POSTGRES_SCHEMA = """
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(sender_id, recipient_id);
+    CREATE TABLE IF NOT EXISTS login_events (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        logged_in_at INTEGER NOT NULL,
+        ip TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_login_events_user ON login_events(user_id, logged_in_at);
 """
 
 def _translate(sql):
@@ -1359,10 +1373,26 @@ def login():
         email = request.form.get("email", "").strip().lower()
         row = get_db().execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if row and check_password_hash(row["password_hash"], request.form.get("password", "")):
+            import time
+            db = get_db()
+            db.execute("INSERT INTO login_events (user_id, logged_in_at, ip) VALUES (?,?,?)",
+                       (row["id"], int(time.time()), _client_ip()))
+            db.commit()
             session["user_id"] = row["id"]
             return redirect(url_for("index"))
         return login_page(error="Email or password did not match.")
     return login_page()
+
+def _client_ip():
+    """First address in the forwarded chain (Render's proxy), else the peer."""
+    route = request.access_route
+    return route[0] if route else (request.remote_addr or "")
+
+def _fmt_login_ts(ts):
+    """Epoch seconds -> 'YYYY-MM-DD HH:MM UTC'; None -> 'never'."""
+    if not ts:
+        return "never"
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 def _hash_reset_token(token):
     import hashlib
@@ -1690,24 +1720,41 @@ def _is_admin(user):
 @app.route("/admin")
 @login_required
 def admin():
-    """Owner-only stats: registered users, check-ins, reviews."""
+    """Owner-only stats: registered users, check-ins, reviews, logins."""
     user = current_user()
     if not _is_admin(user):
         return page("Admin", user, '<div class="card"><p class="muted">Not available.</p></div>')
     db = get_db()
     users = db.execute(
-        "SELECT name, email, role, airline, base, aircraft, created_at FROM users ORDER BY created_at").fetchall()
+        "SELECT u.name, u.email, u.role, u.airline, u.base, u.aircraft, u.created_at, "
+        "MAX(le.logged_in_at) AS last_login FROM users u "
+        "LEFT JOIN login_events le ON le.user_id = u.id "
+        "GROUP BY u.id ORDER BY u.created_at").fetchall()
     n_checkins = db.execute("SELECT count(*) AS n FROM checkins").fetchone()["n"]
     n_reviews = db.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"]
+    n_logins = db.execute("SELECT count(*) AS n FROM login_events").fetchone()["n"]
     rows = "".join(
         f"<li>{esc(u['name'])} — {esc(u['email'])} "
         f"({esc(u['role'] or 'pilot').title()} · {esc(u['airline'])} · {esc(u['base'])} · {esc(u['aircraft'])}) "
-        f"<span class='muted'>joined {esc(str(u['created_at'] or ''))}</span></li>"
+        f"<span class='muted'>joined {esc(str(u['created_at'] or ''))} · "
+        f"last login {_fmt_login_ts(u['last_login'])}</span></li>"
         for u in users)
+    recent = db.execute(
+        "SELECT le.logged_in_at, le.ip, u.name, u.email FROM login_events le "
+        "JOIN users u ON u.id = le.user_id "
+        "ORDER BY le.logged_in_at DESC LIMIT 100").fetchall()
+    login_rows = "".join(
+        f"<li>{_fmt_login_ts(r['logged_in_at'])} — {esc(r['name'])} ({esc(r['email'])})"
+        f"{' · ' + esc(r['ip']) if r['ip'] else ''}</li>"
+        for r in recent)
     body = (f'<div class="card"><h2>App stats</h2>'
             f'<p><strong>{len(users)}</strong> registered users · '
-            f'<strong>{n_checkins}</strong> check-ins · <strong>{n_reviews}</strong> reviews</p>'
-            f'<ul>{rows}</ul></div>')
+            f'<strong>{n_checkins}</strong> check-ins · <strong>{n_reviews}</strong> reviews · '
+            f'<strong>{n_logins}</strong> logins recorded</p>'
+            f'<ul>{rows}</ul></div>'
+            f'<div class="card"><h2>Recent logins</h2>'
+            f'<p class="muted">Newest first. Logins are recorded from now on — logins before this update were not tracked.</p>'
+            f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul></div>')
     return page("Admin", user, body)
 
 def _role_options(selected):
