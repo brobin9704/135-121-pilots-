@@ -1732,10 +1732,7 @@ def admin():
         return page("Admin", user, '<div class="card"><p class="muted">Not available.</p></div>')
     db = get_db()
     users = db.execute(
-        "SELECT u.name, u.email, u.role, u.airline, u.base, u.aircraft, u.created_at, "
-        "MAX(le.logged_in_at) AS last_login FROM users u "
-        "LEFT JOIN login_events le ON le.user_id = u.id "
-        "GROUP BY u.id ORDER BY u.created_at").fetchall()
+        "SELECT name, email, role, airline, base, aircraft, created_at FROM users ORDER BY created_at").fetchall()
     n_checkins = db.execute("SELECT count(*) AS n FROM checkins").fetchone()["n"]
     n_reviews = db.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"]
     n_logins = db.execute("SELECT count(*) AS n FROM login_events").fetchone()["n"]
@@ -1755,8 +1752,7 @@ def admin():
     rows = "".join(
         f"<li>{esc(u['name'])} — {esc(u['email'])} "
         f"({esc(u['role'] or 'pilot').title()} · {esc(u['airline'])} · {esc(u['base'])} · {esc(u['aircraft'])}) "
-        f"<span class='muted'>joined {esc(str(u['created_at'] or ''))} · "
-        f"last login {_fmt_login_ts(u['last_login'])}</span></li>"
+        f"<span class='muted'>joined {esc(str(u['created_at'] or ''))}</span></li>"
         for u in users)
     # One row per user: their latest login only.
     recent = db.execute(
