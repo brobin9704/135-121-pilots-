@@ -1653,13 +1653,14 @@ def login_page(error=None):
       </style></head><body><div class="bg"></div><div class="scrim"></div>
       <div class="card"><h1>Pilots and Crew Community</h1>
       <p class="tag">The Pilots and Crew Community App is where pilots share real layover intel. Check in at your overnight, leave your honest opinion of the hotels and restaurants nearby, and read what other pilots thought before you book, eat, or sleep.</p>
-      {err}<form method="post">
+      {err}<form method="post" id="login_form">
       <label>Email</label><input type="email" name="email" required autocomplete="email">
       <label>Password</label><input type="password" name="password" required autocomplete="current-password">
       <button type="submit">Log in</button></form>
       <p class="reg"><a href="/forgot-password">Forgot password?</a></p>
       <p class="reg">No account yet? <a href="/register">Register</a></p></div>
       {ATC_AUDIO_HTML}<script>{ATC_AUDIO_JS}</script>
+      <script>document.getElementById('login_form').addEventListener('keydown',function(e){{if(e.key==='Enter'){{e.preventDefault();}}}});</script>
       </body></html>""")
 
 @app.route("/logout")
