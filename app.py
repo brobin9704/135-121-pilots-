@@ -3355,12 +3355,19 @@ def conversation(user_id):
         "SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) "
         "OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at, id",
         (user["id"], other["id"], other["id"], user["id"])).fetchall()
-    msgs = "".join(
-        f'<div class="card" style="{"margin-left:24px" if r["sender_id"] == user["id"] else "margin-right:24px"}">'
-        f'<p style="margin:0 0 4px"><strong>{esc("You" if r["sender_id"] == user["id"] else other["name"])}</strong> '
-        f'<span class="muted">{esc(str(r["created_at"])[:16])}</span></p>'
-        f'<p style="margin:0;white-space:pre-wrap">{esc(r["body"])}</p></div>'
-        for r in rows) or '<p class="muted">No messages yet — say hello.</p>'
+    msg_html = []
+    for r in rows:
+        mine = r["sender_id"] == user["id"]
+        style = ("margin-left:24px;background:#0284c7;border-color:#38bdf8" if mine
+                 else "margin-right:24px")
+        ts_style = ' style="color:#e0f2fe"' if mine else ""
+        who = "You" if mine else other["name"]
+        msg_html.append(
+            f'<div class="card" style="{style}">'
+            f'<p style="margin:0 0 4px"><strong>{esc(who)}</strong> '
+            f'<span class="muted"{ts_style}>{esc(str(r["created_at"])[:16])}</span></p>'
+            f'<p style="margin:0;white-space:pre-wrap">{esc(r["body"])}</p></div>')
+    msgs = "".join(msg_html) or '<p class="muted">No messages yet — say hello.</p>'
     body = (f'<div class="card"><h2>{esc(other["name"])}</h2>'
             f'<form method="post"><label>Message</label>'
             f'<textarea name="body" rows="3" required placeholder="Write a message…"></textarea>'
