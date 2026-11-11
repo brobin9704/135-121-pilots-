@@ -2079,6 +2079,7 @@ def current_checkin_html(checkin):
         _st = None
     if _st:
         loc += f', {esc(_st)}'
+    loc += ' <span class="muted" style="font-weight:400">(Hit to add review)</span>'
     status_lines.append(loc)
     status_html = "<br>".join(status_lines)
     return f"""<div class="card">{head}
