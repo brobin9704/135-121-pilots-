@@ -2923,13 +2923,13 @@ def external_results_html(kind, data, user, with_map=True):
                  "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
             checkin_btn = ""
             if kind == "hotel" and place["airport_code"]:
-                checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px" onsubmit="return confirm(\'Check in here?\')">'
+                checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px" onsubmit="return confirm(\'Staying here?\')">'
                     f'<input type="hidden" name="action" value="checkin">'
                     f'<input type="hidden" name="airport_code" value="{esc(place["airport_code"])}">'
                     f'<input type="hidden" name="city" value="{esc(place["city"])}">'
                     f'<input type="hidden" name="place_name" value="{esc(r["name"])}">'
                     f'<input type="hidden" name="kind" value="{kind}">'
-                    f'<button type="submit" style="width:auto;padding:6px 12px">Check in</button></form>')
+                    f'<button type="submit" style="width:auto;padding:6px 12px">Staying Here</button></form>')
             name_html = f'<a href="{add}"><strong>{esc(r["name"])}</strong></a>'
             action_html = f'<p><a href="{add}">Add review</a></p>{checkin_btn}'
             # Tapping a result name shows the place on the map (new tab), like saved
