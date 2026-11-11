@@ -2029,7 +2029,7 @@ def _slot_checkout_form(slot, label):
     return (f'<form method="post" action="{url_for("checkout_place")}" style="display:inline" '
             f'onsubmit="return confirm(\'Check out of this {label}?\')">'
             f'<input type="hidden" name="slot" value="{slot}">'
-            f'<button type="submit" style="width:auto;padding:4px 10px">Check out</button></form>')
+            f'<button type="submit" style="width:auto;padding:4px 10px">Checked out</button></form>')
 
 
 def upcoming_checkins_html(user):
@@ -2087,7 +2087,7 @@ def current_checkin_html(checkin):
       <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
       <p><a href="{url_for('edit_checkin')}">Edit check-in</a></p>
       <form method="post" action="{url_for('board')}" onsubmit="return confirm('Check out of this location?')"><input type="hidden" name="action" value="checkout">
-      <button type="submit">Check out</button></form></div>"""
+      <button type="submit">Checked out</button></form></div>"""
 
 
 def friends_nearby_html(db, user, checkin):
