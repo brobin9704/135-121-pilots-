@@ -2051,9 +2051,9 @@ def upcoming_checkins_html(user):
 def current_checkin_html(checkin):
     """Card showing the user's active check-in (hotel/restaurant places link to the review form)."""
     checkin_btn = (f'<a href="{url_for("board")}" class="btn" style="width:auto;white-space:nowrap">'
-                   f'+ Check in</a>')
+                   f'Locate</a>')
     head = (f'<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
-            f'<h2 style="margin:0">Current check-in</h2>{checkin_btn}</div>')
+            f'<h2 style="margin:0">Current Location</h2>{checkin_btn}</div>')
     if not checkin:
         return f'<div class="card">{head}<p class="muted">No active check-in.</p></div>'
     def _place_link(place, kind):
