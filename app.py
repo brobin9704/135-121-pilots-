@@ -2064,15 +2064,15 @@ def current_checkin_html(checkin):
     _REVIEW_HINT = ' <span class="muted" style="font-weight:400">(Hit to add review)</span>'
     status_lines = []
     if checkin["hotel_place"]:
-        status_lines.append(f"Hotel: {_place_link(checkin['hotel_place'], 'hotel')} "
-                            f"{_slot_checkout_form('hotel', 'hotel')}{_REVIEW_HINT}")
+        status_lines.append(f"Hotel: {_place_link(checkin['hotel_place'], 'hotel')}{_REVIEW_HINT} "
+                            f"{_slot_checkout_form('hotel', 'hotel')}")
     if checkin["restaurant_place"]:
-        status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')} "
-                            f"{_slot_checkout_form('restaurant', 'restaurant')}{_REVIEW_HINT}")
+        status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')}{_REVIEW_HINT} "
+                            f"{_slot_checkout_form('restaurant', 'restaurant')}")
     if not status_lines and checkin["place_name"]:
         # Legacy rows (pre hotel/restaurant split).
         kind = checkin["kind"] or "hotel"
-        status_lines.append(f"{_place_link(checkin['place_name'], kind)} {_slot_checkout_form(kind, kind)}{_REVIEW_HINT}")
+        status_lines.append(f"{_place_link(checkin['place_name'], kind)}{_REVIEW_HINT} {_slot_checkout_form(kind, kind)}")
     loc = f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}'
     try:
         _st = checkin["state"]
