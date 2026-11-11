@@ -2390,7 +2390,7 @@ def board():
         if cur:
             db.execute("UPDATE checkins SET checked_out = 1 WHERE id = ?", (cur["id"],))
         db.commit()
-        flash = "Checked out."
+        flash = "Left the area."
     checkin = current_checkin(user["id"])
     # Check-in history: past check-ins only (upcoming ones get their own card).
     all_rows = db.execute(
