@@ -152,6 +152,7 @@ SQLITE_SCHEMA = """
         email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'pilot',
         layout TEXT NOT NULL DEFAULT 'tabs',
+        profile_photo TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS checkins (
@@ -240,6 +241,7 @@ POSTGRES_SCHEMA = """
         email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'pilot',
         layout TEXT NOT NULL DEFAULT 'tabs',
+        profile_photo TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS checkins (
@@ -378,6 +380,7 @@ def init_db():
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS state TEXT")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pilot'")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT 'tabs'")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS phone TEXT")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS address TEXT")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS lat REAL")
@@ -415,6 +418,10 @@ def init_db():
             pass  # column already exists
         try:
             db.execute("ALTER TABLE users ADD COLUMN layout TEXT NOT NULL DEFAULT 'tabs'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN profile_photo TEXT")
         except sqlite3.OperationalError:
             pass  # column already exists
         for _col in ("phone", "address", "lat", "lon"):
@@ -1143,6 +1150,35 @@ def _save_review_photos(db, review_id, files):
             continue
     return saved
 
+def _resize_photo_b64(f, max_px):
+    """Resize one uploaded image to a base64 JPEG, or None if unusable."""
+    if not _PIL_OK or not f or not f.filename:
+        return None
+    try:
+        img = Image.open(f.stream)
+        img.verify()
+        f.stream.seek(0)
+        img = Image.open(f.stream).convert("RGB")
+        img.thumbnail((max_px, max_px))
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=72)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return None
+
+def _avatar_html(user_id, size=36):
+    """Round profile photo, or a circle with the user's first initial."""
+    row = get_db().execute("SELECT name, profile_photo FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row:
+        return ""
+    initial = esc((row["name"] or "?").strip()[:1].upper() or "?")
+    st = (f"width:{size}px;height:{size}px;border-radius:50%;object-fit:cover;"
+          f"vertical-align:middle;margin-right:6px")
+    if row["profile_photo"]:
+        return f'<img src="{url_for("profile_photo", user_id=user_id)}" alt="" style="{st}">'
+    return (f'<span style="display:inline-flex;align-items:center;justify-content:center;'
+            f'{st}background:#334155;color:#e2e8f0;font-weight:700">{initial}</span>')
+
 def review_photos_html(review_id):
     rows = get_db().execute("SELECT id FROM photos WHERE review_id=? ORDER BY id", (review_id,)).fetchall()
     if not rows:
@@ -1241,8 +1277,9 @@ def review_card(r, user):
     code = (r["airport_code"] or "").strip()
     code_html = (f'<a href="{url_for("airport_hub", code=code.upper())}">{esc(code)}</a>' if code
                  else '<span class="muted">—</span>')
+    byline_avatar = "" if r["is_anonymous"] else _avatar_html(r["user_id"], 28)
     return f"""<div class="card"><a href="{loc_url}" target="_blank" rel="noopener"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>
-      <div class="muted">{code_html} · {esc(r['city'])} · by {esc(_author_name(r))}</div>
+      <div class="muted">{code_html} · {esc(r['city'])} · {byline_avatar}by {esc(_author_name(r))}</div>
       {contact}{minimap}<div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{own}{report}</div>"""
 
 def place_aggregates(rows):
@@ -1697,6 +1734,18 @@ def profile():
                    (generate_password_hash(new), user["id"]))
         db.commit()
         return page("My Profile", user, profile_form(user), flash="Password changed.")
+    if request.method == "POST" and request.form.get("form") == "photo":
+        if request.form.get("remove") == "1":
+            db.execute("UPDATE users SET profile_photo=NULL WHERE id=?", (user["id"],))
+            db.commit()
+            return page("My Profile", user, profile_form(current_user()), flash="Profile photo removed.")
+        data = _resize_photo_b64(request.files.get("photo"), 512)
+        if not data:
+            return page("My Profile", user, profile_form(user),
+                        error="That photo could not be used — try a JPG or PNG.")
+        db.execute("UPDATE users SET profile_photo=? WHERE id=?", (data, user["id"]))
+        db.commit()
+        return page("My Profile", user, profile_form(current_user()), flash="Profile photo updated.")
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
@@ -1732,7 +1781,8 @@ def admin():
         return page("Admin", user, '<div class="card"><p class="muted">Not available.</p></div>')
     db = get_db()
     users = db.execute(
-        "SELECT name, email, role, airline, base, aircraft, created_at FROM users ORDER BY created_at").fetchall()
+        "SELECT id, name, email, role, airline, base, aircraft, created_at, "
+        "profile_photo IS NOT NULL AS has_photo FROM users ORDER BY created_at").fetchall()
     n_checkins = db.execute("SELECT count(*) AS n FROM checkins").fetchone()["n"]
     n_reviews = db.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"]
     n_logins = db.execute("SELECT count(*) AS n FROM login_events").fetchone()["n"]
@@ -1749,10 +1799,16 @@ def admin():
         if c["state"]:
             label += f", {c['state']}"
         return f"checked in at {label}"
+    def _remove_photo_form(uid):
+        return (f' <form method="post" action="{url_for("admin_remove_photo", user_id=uid)}" '
+                f'style="display:inline;margin-left:8px">'
+                f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px">'
+                f'Remove photo</button></form>')
     rows = "".join(
-        f"<li>{esc(u['name'])} — {esc(u['email'])} "
+        f"<li>{_avatar_html(u['id'], 28)}{esc(u['name'])} — {esc(u['email'])} "
         f"({esc(u['role'] or 'pilot').title()} · {esc(u['airline'])} · {esc(u['base'])} · {esc(u['aircraft'])}) "
-        f"<span class='muted'>joined {esc(str(u['created_at'] or ''))}</span></li>"
+        f"<span class='muted'>joined {esc(str(u['created_at'] or ''))}</span>"
+        f"{_remove_photo_form(u['id']) if u['has_photo'] else ''}</li>"
         for u in users)
     # One row per user: their latest login only.
     recent = db.execute(
@@ -1773,6 +1829,18 @@ def admin():
             f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul></div>')
     return page("Admin", user, body)
 
+@app.route("/admin/remove-photo/<int:user_id>", methods=["POST"])
+@login_required
+def admin_remove_photo(user_id):
+    """Owner removes a pilot's profile photo."""
+    user = current_user()
+    if not _is_admin(user):
+        return page("Admin", user, '<div class="card"><p class="muted">Not available.</p></div>')
+    db = get_db()
+    db.execute("UPDATE users SET profile_photo=NULL WHERE id=?", (user_id,))
+    db.commit()
+    return redirect(url_for("admin"))
+
 def _role_options(selected):
     return "".join(
         f'<option value="{v}"{" selected" if v == selected else ""}>{v.title()}</option>'
@@ -1780,7 +1848,19 @@ def _role_options(selected):
 
 def profile_form(user):
     role = user["role"] if user["role"] in ("pilot", "crew") else "pilot"
-    return f"""<div class="card"><h2>My Profile</h2>
+    try:
+        _has_photo = bool(user["profile_photo"])
+    except (KeyError, IndexError):
+        _has_photo = False
+    remove_form = ('<form method="post" style="margin-top:8px"><input type="hidden" name="form" value="photo">'
+                   '<input type="hidden" name="remove" value="1">'
+                   '<button type="submit" style="background:#7f1d1d;width:auto;padding:8px 12px">Remove photo</button></form>') if _has_photo else ""
+    photo_card = (f'<div class="card"><h2>Profile photo</h2>'
+                  f'<p>{_avatar_html(user["id"], 72)}</p>'
+                  f'<form method="post" enctype="multipart/form-data"><input type="hidden" name="form" value="photo">'
+                  f'<label>Photo</label><input type="file" name="photo" accept="image/*">'
+                  f'<button type="submit">Upload photo</button></form>{remove_form}</div>')
+    return photo_card + f"""<div class="card"><h2>My Profile</h2>
     <form method="post"><label>Name</label><input name="name" value="{esc(user['name'])}" required>
     <label>Role</label><select name="role">{_role_options(role)}</select>
     <label>Airline</label><input name="airline" value="{esc(user['airline'])}">
@@ -2100,7 +2180,7 @@ def friends_nearby_html(db, user, checkin):
         fc = current_checkin(fr["id"])
         if checkin and fc and (fc["airport_code"].upper() == checkin["airport_code"].upper()
                                or fc["city"].strip().lower() == checkin["city"].strip().lower()):
-            nearby.append(f"{esc(fr['name'])} — {checkin_label(fc)}")
+            nearby.append(f"{_avatar_html(fr['id'], 28)}{esc(fr['name'])} — {checkin_label(fc)}")
     nearby_html = "".join(f"<li>{n}</li>" for n in nearby) or "<li class='muted'>No friends checked in to the same area.</li>"
     return (f'<div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>'
             f'<p><a href="{url_for("friends")}">Manage friends</a></p></div>')
@@ -2733,6 +2813,14 @@ def photo(photo_id):
         return "Not found", 404
     return Response(base64.b64decode(row["data"]), mimetype="image/jpeg")
 
+@app.route("/profile-photo/<int:user_id>")
+@login_required
+def profile_photo(user_id):
+    row = get_db().execute("SELECT profile_photo FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row or not row["profile_photo"]:
+        return "Not found", 404
+    return Response(base64.b64decode(row["profile_photo"]), mimetype="image/jpeg")
+
 @app.route("/reviews/<int:review_id>/delete", methods=["POST"])
 @login_required
 def delete_review(review_id):
@@ -3188,7 +3276,7 @@ def friends():
             nearby = f' — checked in: {checkin_label(fc)}'
         else:
             nearby = ' — no active check-in'
-        items += (f"<li>{esc(fr['name'])} ({esc(fr['role'] or 'pilot').title()} · {esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
+        items += (f"<li>{_avatar_html(fr['id'])}{esc(fr['name'])} ({esc(fr['role'] or 'pilot').title()} · {esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
                   f' <form method="post" style="display:inline;margin-left:8px">'
                   f'<input type="hidden" name="remove_id" value="{fr["id"]}">'
                   f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px">Remove</button>'
@@ -3203,7 +3291,7 @@ def friends():
                     f'<button type="submit">Add friend</button></form>')
         if duplicates:
             dup_items = "".join(
-                f"<li>{esc(m['name'])} ({esc(m['role'] or 'pilot').title()} · {esc(m['airline'])} · {esc(m['base'])} · {esc(m['aircraft'])})"
+                f"<li>{_avatar_html(m['id'])}{esc(m['name'])} ({esc(m['role'] or 'pilot').title()} · {esc(m['airline'])} · {esc(m['base'])} · {esc(m['aircraft'])})"
                 f' <form method="post" style="display:inline;margin-left:8px">'
                 f'<input type="hidden" name="pilot_id" value="{m["id"]}">'
                 f'<button type="submit" style="width:auto;padding:4px 10px">Send request</button>'
@@ -3218,7 +3306,7 @@ def friends():
     for q in db.execute(
             "SELECT r.id, r.from_user_id, u.name, u.airline, u.base, u.aircraft FROM friend_requests r "
             "JOIN users u ON u.id = r.from_user_id WHERE r.to_user_id=?", (user["id"],)).fetchall():
-        req_items += (f"<li>{esc(q['name'])} ({esc(q['airline'])} · {esc(q['base'])} · {esc(q['aircraft'])})"
+        req_items += (f"<li>{_avatar_html(q['from_user_id'])}{esc(q['name'])} ({esc(q['airline'])} · {esc(q['base'])} · {esc(q['aircraft'])})"
                       f' <form method="post" style="display:inline;margin-left:8px">'
                       f'<input type="hidden" name="request_id" value="{q["id"]}">'
                       f'<button type="submit" name="req_action" value="approve" style="width:auto;padding:4px 10px">Approve</button> '
@@ -3298,7 +3386,7 @@ def _messages_html(user, db):
             convos[oid]["unread"] += 1
     if order:
         items = "".join(
-            f'<li><a href="{url_for("conversation", user_id=oid)}">'
+            f'<li>{_avatar_html(oid)}<a href="{url_for("conversation", user_id=oid)}">'
             f'<strong>{esc(convos[oid]["name"])}</strong></a>'
             f'{" <span class=\"msgdot\">" + str(convos[oid]["unread"]) + "</span>" if convos[oid]["unread"] else ""}'
             f'<br><span class="muted">{esc((convos[oid]["latest"]["body"] or "")[:80])}</span></li>'
@@ -3312,7 +3400,7 @@ def _messages_html(user, db):
     if fresh:
         new_items = "".join(
             f'<li data-search="{esc(((o["name"] or "").split() or [""])[0])}">'
-            f'<a href="{url_for("conversation", user_id=o["id"])}">{esc(o["name"])}</a> '
+            f'{_avatar_html(o["id"])}<a href="{url_for("conversation", user_id=o["id"])}">{esc(o["name"])}</a> '
             f'<span class="muted">· {esc(o["airline"] or "")} {esc(o["base"] or "")}</span></li>'
             for o in fresh)
         new_card = (f'<div class="card"><h2>Message someone new</h2>'
@@ -3369,7 +3457,7 @@ def conversation(user_id):
             f'<span class="muted"{ts_style}>{esc(str(r["created_at"])[:16])}</span></p>'
             f'<p style="margin:0;white-space:pre-wrap">{esc(r["body"])}</p></div>')
     msgs = "".join(msg_html) or '<p class="muted">No messages yet — say hello.</p>'
-    body = (f'<div class="card"><h2>{esc(other["name"])}</h2>'
+    body = (f'<div class="card"><h2>{_avatar_html(other["id"], 40)}{esc(other["name"])}</h2>'
             f'<form method="post"><label>Message</label>'
             f'<textarea name="body" rows="3" required placeholder="Write a message…"></textarea>'
             f'<button type="submit">Send</button></form>'
