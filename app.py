@@ -3294,9 +3294,7 @@ def friends():
     if fq:
         fl = fq.lower()
         rows = [fr for fr in rows
-                if fl in (fr["name"] or "").lower()
-                or fl in (fr["airline"] or "").lower()
-                or fl in (fr["aircraft"] or "").lower()]
+                if ((fr["name"] or "").split() or [""])[0].lower().startswith(fl)]
     checkin = current_checkin(user["id"])
     items = ""
     for fr in rows:
@@ -3308,7 +3306,7 @@ def friends():
             nearby = f' — checked in: {checkin_label(fc)}'
         else:
             nearby = ' — no active check-in'
-        _search = esc(" ".join(x for x in [fr["name"], fr["airline"], fr["aircraft"]] if x).lower())
+        _search = esc(((fr["name"] or "").split() or [""])[0])
         items += (f"<li data-search=\"{_search}\">{_avatar_html(fr['id'])}{esc(fr['name'])} ({esc(fr['role'] or 'pilot').title()} · {esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
                   f' <form method="post" style="display:inline;margin-left:8px">'
                   f'<input type="hidden" name="remove_id" value="{fr["id"]}">'
@@ -3375,7 +3373,7 @@ def friends():
                       f"</form></li>")
     req_card = f'<div class="card"><h2>Friend requests</h2><ul>{req_items}</ul></div>' if req_items else ""
     search_html = (f'<form method="get" style="margin-bottom:12px">'
-                   f'<input id="friend_search" name="q" placeholder="Search by name, company, or plane" '
+                   f'<input id="friend_search" name="q" placeholder="Search by first name" '
                    f'value="{esc(fq)}" autocomplete="off"></form>'
                    f'<p class="muted" id="friend_count"></p>')
     if fq:
@@ -3389,7 +3387,7 @@ def friends():
                  f'count=document.getElementById("friend_count"),'
                  f'none=document.getElementById("friend_no_match");'
                  f'function filter(){{var q=input.value.trim().toLowerCase(),n=0;'
-                 f'items.forEach(function(li){{var hit=!q||li.getAttribute("data-search").indexOf(q)!==-1;'
+                 f'items.forEach(function(li){{var hit=!q||li.getAttribute("data-search").toLowerCase().indexOf(q)===0;'
                  f'li.style.display=hit?"":"none";if(hit)n++;}});'
                  f'if(none)none.style.display=(q&&n===0)?"":"none";'
                  f'if(count)count.textContent=q?(n+(n===1?" match":" matches")):"";}}'
