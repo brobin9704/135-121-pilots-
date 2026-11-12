@@ -2524,7 +2524,7 @@ def checkout_place():
                        "WHERE id=? AND user_id=? AND checked_out=0",
                        (checkin["id"], user["id"]))
         db.commit()
-        flask_flash(f"Checked out of the {slot}.")
+        flask_flash(f"Left the {slot}.")
     return redirect(url_for("index"))
 
 
