@@ -2128,7 +2128,7 @@ def upcoming_checkins_html(user):
         f"<input type=\"hidden\" name=\"id\" value=\"{r['id']}\">"
         f"<button type=\"submit\" style=\"width:auto;padding:4px 10px;background:#7f1d1d\">Cancel</button></form></li>"
         for r in rows)
-    return f'<div class="card"><h2>Upcoming check-ins</h2><ul>{items}</ul></div>'
+    return f'<div class="card"><h2>Upcoming</h2><ul>{items}</ul></div>'
 
 
 def current_checkin_html(checkin):
@@ -2486,7 +2486,7 @@ def board():
         items = "".join(
             f"<li>{checkin_label(r)} <span class='muted'>— {esc(r['start_date'])} to {esc(r['end_date'] or 'open')}</span></li>"
             for r in past)
-        history_html = f'<div class="card"><h2>Check-in history</h2><ul>{items}</ul></div>'
+        history_html = f'<div class="card"><h2>Location history</h2><ul>{items}</ul></div>'
     else:
         history_html = ""
     _state_dd = state_dropdown()
