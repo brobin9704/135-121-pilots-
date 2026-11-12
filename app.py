@@ -3290,8 +3290,26 @@ def friends():
     if others:
         add_card = (f'<div class="card"><h2>Add a friend</h2><form method="post">'
                     f"<label>Pilot's name (as on their account)</label>"
-                    f'<input name="pilot_name" placeholder="Jane Doe" autocomplete="off" required>'
+                    f'<input id="add_friend_input" name="pilot_name" placeholder="Jane Doe" autocomplete="off" required>'
                     f'<button type="submit">Add friend</button></form>')
+        add_items = "".join(
+            f'<li data-search="{esc(" ".join(x for x in [o["name"], o["airline"], o["base"], o["aircraft"]] if x).lower())}" '
+            f'data-name="{esc(o["name"])}" style="cursor:pointer">'
+            f'{_avatar_html(o["id"])}{esc(o["name"])} '
+            f'<span class="muted">· {esc(o["airline"] or "")} {esc(o["base"] or "")} {esc(o["aircraft"] or "")}</span></li>'
+            for o in others)
+        add_card += (f'<p class="muted" id="add_friend_count"></p>'
+                     f'<ul id="add_friend_list">{add_items}</ul>'
+                     f'<script>(function(){{var input=document.getElementById("add_friend_input"),'
+                     f'items=document.querySelectorAll("#add_friend_list li"),'
+                     f'count=document.getElementById("add_friend_count");'
+                     f'function filter(){{var q=input.value.trim().toLowerCase(),n=0;'
+                     f'items.forEach(function(li){{var hit=q&&li.getAttribute("data-search").indexOf(q)!==-1;'
+                     f'li.style.display=hit?"":"none";if(hit)n++;}});'
+                     f'count.textContent=q?(n+(n===1?" match":" matches")):"Type a name to find pilots.";}}'
+                     f'items.forEach(function(li){{li.addEventListener("click",function(){{'
+                     f'input.value=li.getAttribute("data-name");filter();input.focus();}});}});'
+                     f'input.addEventListener("input",filter);filter();}})();</script>')
         if duplicates:
             dup_items = "".join(
                 f"<li>{_avatar_html(m['id'])}{esc(m['name'])} ({esc(m['role'] or 'pilot').title()} · {esc(m['airline'])} · {esc(m['base'])} · {esc(m['aircraft'])})"
