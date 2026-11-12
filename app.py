@@ -86,11 +86,18 @@ FBO_TAGS = [
     "crew lounge", "catering", "quick turn", "free wifi",
 ]
 
+ATTRACTION_TAGS = [
+    "worth the trip", "family friendly", "good views", "close to airport",
+    "free entry", "guided tours", "food nearby", "good for layovers",
+]
+
 def _tags_for_kind(kind):
     if kind == "restaurant":
         return RESTAURANT_TAGS
     if kind == "fbo":
         return FBO_TAGS
+    if kind == "attraction":
+        return ATTRACTION_TAGS
     return HOTEL_TAGS
 
 def _after_review_url(kind):
@@ -102,7 +109,7 @@ def _after_review_url(kind):
     return url_for("index")
 
 def _kind_label(kind):
-    return {"fbo": "FBO"}.get(kind, kind)
+    return {"fbo": "FBO", "attraction": "Attraction"}.get(kind, kind)
 
 def _author_name(r):
     return "Anonymous" if r["is_anonymous"] else (r["author"] or "")
@@ -195,7 +202,7 @@ SQLITE_SCHEMA = """
     CREATE TABLE IF NOT EXISTS reviews (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant','fbo')),
+        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant','fbo','attraction')),
         place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
         phone TEXT, address TEXT, lat REAL, lon REAL,
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
@@ -284,7 +291,7 @@ POSTGRES_SCHEMA = """
     CREATE TABLE IF NOT EXISTS reviews (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
-        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant','fbo')),
+        kind TEXT NOT NULL CHECK(kind IN ('hotel','restaurant','fbo','attraction')),
         place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
         phone TEXT, address TEXT, lat REAL, lon REAL,
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
@@ -387,9 +394,9 @@ def init_db():
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS lat REAL")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS lon REAL")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_anonymous INTEGER NOT NULL DEFAULT 0")
-            # Widen the kind CHECK to include 'fbo' (auto-named reviews_kind_check).
+            # Widen the kind CHECK to include 'fbo' and 'attraction' (auto-named reviews_kind_check).
             cur.execute("ALTER TABLE reviews DROP CONSTRAINT IF EXISTS reviews_kind_check")
-            cur.execute("ALTER TABLE reviews ADD CONSTRAINT reviews_kind_check CHECK (kind IN ('hotel','restaurant','fbo'))")
+            cur.execute("ALTER TABLE reviews ADD CONSTRAINT reviews_kind_check CHECK (kind IN ('hotel','restaurant','fbo','attraction'))")
             # Clear FBO search caches poisoned by failed searches during the OSM outage.
             cur.execute("DELETE FROM search_cache WHERE kind = 'fbo'")
             cur.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
@@ -1337,7 +1344,7 @@ def saved_reviews_section(kind, user, q, scope, sort="new", tag=""):
                    f'(current check-in: {esc(checkin["airport_code"])} · {esc(checkin["city"])})</p>')
     sort_links = (f'<p>Sort: {"<strong>Newest</strong>" if sort == "new" else f"<a href=\"{_qs(sort="new")}\">Newest</a>"} | '
                   f'{"<strong>Top rated</strong>" if sort == "top" else f"<a href=\"{_qs(sort="top")}\">Top rated</a>"}</p>')
-    tag_list = RESTAURANT_TAGS if kind == "restaurant" else HOTEL_TAGS
+    tag_list = _tags_for_kind(kind)
     tag_chips = []
     for t in tag_list:
         if t.lower() == tag.lower() and tag:
@@ -2154,9 +2161,7 @@ def current_checkin_html(checkin):
         status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')}{_REVIEW_HINT}")
         status_lines.append(_slot_checkout_form('restaurant', 'restaurant'))
     if checkin["attraction_place"]:
-        _loc_url = ("https://www.openstreetmap.org/search?" + urllib.parse.urlencode(
-            {"query": f"{checkin['attraction_place']}, {checkin['city']}"}))
-        status_lines.append(f'Attraction: <a href="{_loc_url}" target="_blank" rel="noopener">{esc(checkin["attraction_place"])}</a>')
+        status_lines.append(f"Attraction: {_place_link(checkin['attraction_place'], 'attraction')}{_REVIEW_HINT}")
         status_lines.append(_slot_checkout_form('attraction', 'attraction'))
     if not status_lines and checkin["place_name"]:
         # Legacy rows (pre hotel/restaurant split).
@@ -2632,7 +2637,7 @@ def new_review():
     checkin = current_checkin(user["id"])
     if request.method == "POST":
         kind = request.form.get("kind", "hotel")
-        if kind not in ("hotel", "restaurant", "fbo"):
+        if kind not in ("hotel", "restaurant", "fbo", "attraction"):
             kind = "hotel"
         chosen = request.form.getlist("tag")
         custom = request.form.get("custom_tags", "").strip()
@@ -2665,7 +2670,7 @@ def new_review():
     address = request.args.get("address", "")
     lat = request.args.get("lat", "")
     lon = request.args.get("lon", "")
-    tag_list = _tags_for_kind(kind) if kind in ("hotel", "restaurant", "fbo") else HOTEL_TAGS
+    tag_list = _tags_for_kind(kind) if kind in ("hotel", "restaurant", "fbo", "attraction") else HOTEL_TAGS
     boxes = "".join(
         f'<label><input type="checkbox" name="tag" value="{esc(t)}" style="width:auto"> {esc(t)}</label><br>' for t in tag_list)
     body = f"""<div class="card"><h2>Add a {_kind_label(kind)} review</h2>
@@ -3035,7 +3040,11 @@ def external_results_html(kind, data, user, with_map=True):
                 {"query": f"{r['name']}, {place['city']}"}))
             name_html = (f'<a href="{loc_url}" target="_blank" rel="noopener">'
                          f'<strong>{esc(r["name"])}</strong></a>')
-            action_html = _attach_button(kind, place, r["name"])
+            add = (url_for("new_review") + "?" + urllib.parse.urlencode(
+                {"kind": "attraction", "place": r["name"], "airport": place["airport_code"], "city": place["city"],
+                 "phone": r["phone"] or "", "address": r["address"] or "",
+                 "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
+            action_html = f'<p><a href="{add}">Add review</a></p>' + _attach_button(kind, place, r["name"])
         else:
             add = (url_for("new_review") + "?" + urllib.parse.urlencode(
                 {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"],
