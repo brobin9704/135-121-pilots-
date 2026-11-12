@@ -1858,8 +1858,11 @@ def profile_form(user):
     photo_card = (f'<div class="card"><h2>Profile photo</h2>'
                   f'<p>{_avatar_html(user["id"], 72)}</p>'
                   f'<form method="post" enctype="multipart/form-data"><input type="hidden" name="form" value="photo">'
-                  f'<label>Photo</label><input type="file" name="photo" accept="image/*">'
-                  f'<button type="submit">Upload photo</button></form>{remove_form}</div>')
+                  f'<label>Take a photo</label><input type="file" name="photo" accept="image/*" capture="user" onchange="this.form.submit()">'
+                  f'</form>'
+                  f'<form method="post" enctype="multipart/form-data"><input type="hidden" name="form" value="photo">'
+                  f'<label>Or choose from your gallery</label><input type="file" name="photo" accept="image/*" onchange="this.form.submit()">'
+                  f'</form>{remove_form}</div>')
     return photo_card + f"""<div class="card"><h2>My Profile</h2>
     <form method="post"><label>Name</label><input name="name" value="{esc(user['name'])}" required>
     <label>Role</label><select name="role">{_role_options(role)}</select>
