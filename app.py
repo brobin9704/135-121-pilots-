@@ -159,7 +159,7 @@ SQLITE_SCHEMA = """
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id),
         airport_code TEXT NOT NULL, city TEXT NOT NULL, state TEXT, place_name TEXT, kind TEXT,
-        hotel_place TEXT, restaurant_place TEXT,
+        hotel_place TEXT, restaurant_place TEXT, attraction_place TEXT,
         start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -248,7 +248,7 @@ POSTGRES_SCHEMA = """
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
         airport_code TEXT NOT NULL, city TEXT NOT NULL, state TEXT, place_name TEXT, kind TEXT,
-        hotel_place TEXT, restaurant_place TEXT,
+        hotel_place TEXT, restaurant_place TEXT, attraction_place TEXT,
         start_date TEXT, end_date TEXT, checked_out INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -377,6 +377,7 @@ def init_db():
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS kind TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS hotel_place TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS restaurant_place TEXT")
+            cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS attraction_place TEXT")
             cur.execute("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS state TEXT")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pilot'")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT 'tabs'")
@@ -407,7 +408,7 @@ def init_db():
             db.execute("ALTER TABLE checkins ADD COLUMN kind TEXT")
         except sqlite3.OperationalError:
             pass  # column already exists
-        for _col in ("hotel_place", "restaurant_place", "state"):
+        for _col in ("hotel_place", "restaurant_place", "attraction_place", "state"):
             try:
                 db.execute(f"ALTER TABLE checkins ADD COLUMN {_col} TEXT")
             except sqlite3.OperationalError:
@@ -516,8 +517,8 @@ def area_matches(checkin, airport_code, city):
     return False
 
 def checkin_label(c):
-    """Display label for a check-in: hotel/restaurant places first, then airport · city."""
-    parts = [p for p in [c["hotel_place"], c["restaurant_place"]] if p]
+    """Display label for a check-in: hotel/restaurant/attraction places first, then airport · city."""
+    parts = [p for p in [c["hotel_place"], c["restaurant_place"], c["attraction_place"]] if p]
     if not parts and c["place_name"]:
         parts = [c["place_name"]]
     parts += [c["airport_code"], c["city"]]
@@ -2152,6 +2153,11 @@ def current_checkin_html(checkin):
     if checkin["restaurant_place"]:
         status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')}{_REVIEW_HINT}")
         status_lines.append(_slot_checkout_form('restaurant', 'restaurant'))
+    if checkin["attraction_place"]:
+        _loc_url = ("https://www.openstreetmap.org/search?" + urllib.parse.urlencode(
+            {"query": f"{checkin['attraction_place']}, {checkin['city']}"}))
+        status_lines.append(f'Attraction: <a href="{_loc_url}" target="_blank" rel="noopener">{esc(checkin["attraction_place"])}</a>')
+        status_lines.append(_slot_checkout_form('attraction', 'attraction'))
     if not status_lines and checkin["place_name"]:
         # Legacy rows (pre hotel/restaurant split).
         kind = checkin["kind"] or "hotel"
@@ -2410,7 +2416,7 @@ def board():
         city = request.form.get("city", "").strip()
         state = request.form.get("state", "").strip().upper() or None
         kind = request.form.get("kind", "").strip()
-        kind = kind if kind in ("hotel", "restaurant") else None
+        kind = kind if kind in ("hotel", "restaurant", "attraction") else None
         start = request.form.get("start_date") or date.today().isoformat()
         end = request.form.get("end_date") or None
         # The airport code, city, and state must verify against each other
@@ -2422,10 +2428,11 @@ def board():
                 flash = err
         if not verified:
             pass  # flash already set; fall through to re-render the form.
-        elif place and kind:
-            # From a search result: attach the hotel/restaurant to the current
-            # check-in at this place instead of replacing the whole check-in.
-            col = "hotel_place" if kind == "hotel" else "restaurant_place"
+        elif place and kind in ("hotel", "restaurant", "attraction"):
+            # From a search result: attach the place to the matching slot of the
+            # current check-in at this place instead of replacing the whole check-in.
+            col = {"hotel": "hotel_place", "restaurant": "restaurant_place",
+                   "attraction": "attraction_place"}[kind]
             cur = current_checkin(user["id"])
             if cur and (cur["airport_code"] or "").upper() == code and \
                     (cur["city"] or "").strip().lower() == city.strip().lower():
@@ -2514,8 +2521,9 @@ def checkout_place():
     db = get_db()
     slot = request.form.get("slot")
     checkin = current_checkin(user["id"])
-    if checkin and slot in ("hotel", "restaurant"):
-        col = "hotel_place" if slot == "hotel" else "restaurant_place"
+    if checkin and slot in ("hotel", "restaurant", "attraction"):
+        col = {"hotel": "hotel_place", "restaurant": "restaurant_place",
+               "attraction": "attraction_place"}[slot]
         db.execute(f"UPDATE checkins SET {col}=NULL WHERE id=? AND user_id=? AND checked_out=0",
                    (checkin["id"], user["id"]))
         # Legacy rows stored the place in place_name/kind instead of the slots.
@@ -2550,6 +2558,7 @@ def edit_checkin():
         state = request.form.get("state", "").strip().upper() or None
         hotel = request.form.get("hotel_place", "").strip() or None
         restaurant = request.form.get("restaurant_place", "").strip() or None
+        attraction = request.form.get("attraction_place", "").strip() or None
         start = request.form.get("start_date") or checkin["start_date"]
         end = request.form.get("end_date") or None
         ok, err = verify_checkin(code, city, state)
@@ -2557,9 +2566,9 @@ def edit_checkin():
             flask_flash(err)
             return redirect(url_for("edit_checkin", id=checkin["id"]))
         db.execute(
-            "UPDATE checkins SET airport_code=?, city=?, state=?, hotel_place=?, restaurant_place=?, "
+            "UPDATE checkins SET airport_code=?, city=?, state=?, hotel_place=?, restaurant_place=?, attraction_place=?, "
             "start_date=?, end_date=? WHERE id=? AND user_id=? AND checked_out=0",
-            (code, city, state, hotel, restaurant, start, end, checkin["id"], user["id"]))
+            (code, city, state, hotel, restaurant, attraction, start, end, checkin["id"], user["id"]))
         # A new place means old cached search results no longer apply.
         db.execute("DELETE FROM search_cache WHERE user_id=? AND (upper(airport_code) != ? OR lower(city) != ?)",
                    (user["id"], code, city.strip().lower()))
@@ -2585,6 +2594,7 @@ def edit_checkin():
       <label>City</label>{_edit_city_dd}
       <label>Hotel</label><input name="hotel_place" value="{esc(checkin['hotel_place'] or '')}" placeholder="Hotel (optional)">
       <label>Restaurant</label><input name="restaurant_place" value="{esc(checkin['restaurant_place'] or '')}" placeholder="Restaurant (optional)">
+      <label>Attraction</label><input name="attraction_place" value="{esc(checkin['attraction_place'] or '')}" placeholder="Attraction (optional)">
       <label>Start date</label><input type="date" name="start_date" value="{esc(checkin['start_date'] or '')}">
       <label>End date (optional)</label><input type="date" name="end_date" value="{esc(checkin['end_date'] or '')}">
       <button type="submit">Save changes</button></form>
@@ -2967,6 +2977,23 @@ def at_location_section(kind, user, radius_options, default_radius):
         card += f'<div class="error">{esc(gps_error)}</div>'
     return card, data, checkin
 
+def _attach_button(kind, place, name):
+    """Attach a search-result place to the current check-in.
+    Staying Here (hotels), Eating here (restaurants), Visiting here (attractions)."""
+    _LABELS = {"hotel": ("Staying Here", "Staying here?"),
+               "restaurant": ("Eating here", "Eating here?"),
+               "attraction": ("Visiting here", "Visiting here?")}
+    if kind not in _LABELS or not place["airport_code"]:
+        return ""
+    _label, _confirm = _LABELS[kind]
+    return (f'<form method="post" action="{url_for("board")}" style="margin-top:8px" onsubmit="return confirm(\'{_confirm}\')">'
+            f'<input type="hidden" name="action" value="checkin">'
+            f'<input type="hidden" name="airport_code" value="{esc(place["airport_code"])}">'
+            f'<input type="hidden" name="city" value="{esc(place["city"])}">'
+            f'<input type="hidden" name="place_name" value="{esc(name)}">'
+            f'<input type="hidden" name="kind" value="{kind}">'
+            f'<button type="submit" style="width:auto;padding:6px 12px">{_label}</button></form>')
+
 def external_results_html(kind, data, user, with_map=True):
     centre, results, error, radius, place = data
     kind_label = _kind_label(kind)
@@ -3003,27 +3030,18 @@ def external_results_html(kind, data, user, with_map=True):
         phone = (f"<div>Phone: <a href=\"tel:{esc(r['phone'])}\">{esc(r['phone'])}</a></div>"
                  if r.get("phone") else "")
         if kind == "attraction":
-            # No reviews or check-ins for attractions — link the name to an OSM search.
+            # No reviews for attractions — link the name to an OSM search.
             loc_url = ("https://www.openstreetmap.org/search?" + urllib.parse.urlencode(
                 {"query": f"{r['name']}, {place['city']}"}))
             name_html = (f'<a href="{loc_url}" target="_blank" rel="noopener">'
                          f'<strong>{esc(r["name"])}</strong></a>')
-            action_html = ""
+            action_html = _attach_button(kind, place, r["name"])
         else:
             add = (url_for("new_review") + "?" + urllib.parse.urlencode(
                 {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"],
                  "phone": r["phone"] or "", "address": r["address"] or "",
                  "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
-            checkin_btn = ""
-            if kind in ("hotel", "restaurant") and place["airport_code"]:
-                _label = "Staying Here" if kind == "hotel" else "Eating here"
-                checkin_btn = (f'<form method="post" action="{url_for("board")}" style="margin-top:8px" onsubmit="return confirm(\'{_label}?\')">'
-                    f'<input type="hidden" name="action" value="checkin">'
-                    f'<input type="hidden" name="airport_code" value="{esc(place["airport_code"])}">'
-                    f'<input type="hidden" name="city" value="{esc(place["city"])}">'
-                    f'<input type="hidden" name="place_name" value="{esc(r["name"])}">'
-                    f'<input type="hidden" name="kind" value="{kind}">'
-                    f'<button type="submit" style="width:auto;padding:6px 12px">{_label}</button></form>')
+            checkin_btn = _attach_button(kind, place, r["name"])
             name_html = f'<a href="{add}"><strong>{esc(r["name"])}</strong></a>'
             action_html = f'<p><a href="{add}">Add review</a></p>{checkin_btn}'
             # Tapping a result name shows the place on the map (new tab), like saved
