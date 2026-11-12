@@ -2105,8 +2105,8 @@ def nearest_airport():
     return jsonify({"code": code, "city": city, "name": name, "distance_mi": dist})
 
 def _slot_checkout_form(slot, label):
-    """Small inline form that checks the user out of one place (hotel or restaurant)."""
-    return (f'<form method="post" action="{url_for("checkout_place")}" style="display:inline" '
+    """Small form that checks the user out of one place (hotel or restaurant)."""
+    return (f'<form method="post" action="{url_for("checkout_place")}" style="display:block;margin:2px 0 6px" '
             f'onsubmit="return confirm(\'Check out of this {label}?\')">'
             f'<input type="hidden" name="slot" value="{slot}">'
             f'<button type="submit" style="width:auto;padding:4px 10px">Checked out</button></form>')
@@ -2144,15 +2144,16 @@ def current_checkin_html(checkin):
     _REVIEW_HINT = ' <span class="muted" style="font-weight:400">(Hit to add review)</span>'
     status_lines = []
     if checkin["hotel_place"]:
-        status_lines.append(f"Hotel: {_place_link(checkin['hotel_place'], 'hotel')}{_REVIEW_HINT} "
-                            f"{_slot_checkout_form('hotel', 'hotel')}")
+        status_lines.append(f"Hotel: {_place_link(checkin['hotel_place'], 'hotel')}{_REVIEW_HINT}")
+        status_lines.append(_slot_checkout_form('hotel', 'hotel'))
     if checkin["restaurant_place"]:
-        status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')}{_REVIEW_HINT} "
-                            f"{_slot_checkout_form('restaurant', 'restaurant')}")
+        status_lines.append(f"Restaurant: {_place_link(checkin['restaurant_place'], 'restaurant')}{_REVIEW_HINT}")
+        status_lines.append(_slot_checkout_form('restaurant', 'restaurant'))
     if not status_lines and checkin["place_name"]:
         # Legacy rows (pre hotel/restaurant split).
         kind = checkin["kind"] or "hotel"
-        status_lines.append(f"{_place_link(checkin['place_name'], kind)}{_REVIEW_HINT} {_slot_checkout_form(kind, kind)}")
+        status_lines.append(f"{_place_link(checkin['place_name'], kind)}{_REVIEW_HINT}")
+        status_lines.append(_slot_checkout_form(kind, kind))
     loc = f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}'
     try:
         _st = checkin["state"]
