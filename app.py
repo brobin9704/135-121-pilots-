@@ -3383,6 +3383,19 @@ def _conversation_rows(user_id):
         (user_id, user_id, user_id)).fetchall()
 
 
+def _notify_message(sender, to_id, body):
+    """Email the recipient about a new message (silent no-op if email is off)."""
+    to_user = get_db().execute("SELECT email, name FROM users WHERE id=?", (to_id,)).fetchone()
+    if not to_user:
+        return
+    thread_url = request.host_url.rstrip("/") + url_for("conversation", user_id=sender["id"])
+    send_email(to_user["email"],
+               f"New message from {sender['name']} on Pilots and Crew Community",
+               f"Hi {to_user['name']},\n\n{sender['name']} sent you a message "
+               f"on Pilots and Crew Community:\n\n\"{body[:500]}\"\n\n"
+               f"Log in at {thread_url} to reply.\n")
+
+
 @app.route("/messages", methods=["GET", "POST"])
 @login_required
 def messages():
@@ -3404,6 +3417,7 @@ def messages():
         db.execute("INSERT INTO messages (sender_id, recipient_id, body) VALUES (?,?,?)",
                    (user["id"], to_id, body[:2000]))
         db.commit()
+        _notify_message(user, to_id, body)
         return redirect(url_for("conversation", user_id=to_id))
     return page("Messages", user, _messages_html(user, db))
 
@@ -3470,6 +3484,7 @@ def conversation(user_id):
             db.execute("INSERT INTO messages (sender_id, recipient_id, body) VALUES (?,?,?)",
                        (user["id"], other["id"], body[:2000]))
             db.commit()
+            _notify_message(user, other["id"], body)
         return redirect(url_for("conversation", user_id=other["id"]))
     db.execute("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND recipient_id = ? AND is_read = 0",
                (other["id"], user["id"]))
