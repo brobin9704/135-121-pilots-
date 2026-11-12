@@ -3278,7 +3278,8 @@ def friends():
             nearby = f' — checked in: {checkin_label(fc)}'
         else:
             nearby = ' — no active check-in'
-        items += (f"<li>{_avatar_html(fr['id'])}{esc(fr['name'])} ({esc(fr['role'] or 'pilot').title()} · {esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
+        _search = esc(" ".join(x for x in [fr["name"], fr["airline"], fr["aircraft"]] if x).lower())
+        items += (f"<li data-search=\"{_search}\">{_avatar_html(fr['id'])}{esc(fr['name'])} ({esc(fr['role'] or 'pilot').title()} · {esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
                   f' <form method="post" style="display:inline;margin-left:8px">'
                   f'<input type="hidden" name="remove_id" value="{fr["id"]}">'
                   f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px">Remove</button>'
@@ -3324,20 +3325,31 @@ def friends():
                       f"</form></li>")
     req_card = f'<div class="card"><h2>Friend requests</h2><ul>{req_items}</ul></div>' if req_items else ""
     search_html = (f'<form method="get" style="margin-bottom:12px">'
-                   f'<input name="q" placeholder="Search by name, company, or plane" '
-                   f'value="{esc(fq)}" autocomplete="off">'
-                   f'<button type="submit">Search</button></form>')
+                   f'<input id="friend_search" name="q" placeholder="Search by name, company, or plane" '
+                   f'value="{esc(fq)}" autocomplete="off"></form>'
+                   f'<p class="muted" id="friend_count"></p>')
     if fq:
-        search_html += (f'<p class="muted">{len(rows)} match{"es" if len(rows) != 1 else ""} for '
-                        f'"{esc(fq)}" — <a href="{url_for("friends")}">Clear search</a></p>')
+        search_html += (f'<p class="muted"><a href="{url_for("friends")}">Clear search</a></p>')
     list_html = items or ('<li class="muted">No friends match.</li>' if fq
                           else '<li class="muted">No friends yet.</li>')
+    no_match = ('<li class="muted" id="friend_no_match" style="display:none">No friends match.</li>'
+                if items else "")
+    filter_js = (f'<script>(function(){{var input=document.getElementById("friend_search"),'
+                 f'items=document.querySelectorAll("#friend_list li[data-search]"),'
+                 f'count=document.getElementById("friend_count"),'
+                 f'none=document.getElementById("friend_no_match");'
+                 f'function filter(){{var q=input.value.trim().toLowerCase(),n=0;'
+                 f'items.forEach(function(li){{var hit=!q||li.getAttribute("data-search").indexOf(q)!==-1;'
+                 f'li.style.display=hit?"":"none";if(hit)n++;}});'
+                 f'if(none)none.style.display=(q&&n===0)?"":"none";'
+                 f'if(count)count.textContent=q?(n+(n===1?" match":" matches")):"";}}'
+                 f'input.addEventListener("input",filter);filter();}})();</script>')
     body = f"""<div class="card"><h2>Friends</h2>
       <p class="muted">Friends show as nearby only when their check-in matches yours.</p>
       {search_html}
-      <ul>{list_html}</ul></div>
+      <ul id="friend_list">{list_html}{no_match}</ul></div>
       {req_card}
-      {add_card}"""
+      {add_card}{filter_js}"""
     return page("Friends", user, body, flash=flash, error=error)
 
 # ---------------------------------------------------------------- messages
