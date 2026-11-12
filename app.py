@@ -2838,7 +2838,7 @@ def at_location_section(kind, user, radius_options, default_radius):
         checkin_part = (f'<p class="muted">Uses your check-in location: {esc(checkin["airport_code"])} · '
                         f'{esc(checkin["city"])}.</p>'
                         f'<form method="get"><input type="hidden" name="at_checkin" value="1">{radios}'
-                        f'<button type="submit">Search {kind}s at my check-in</button></form>')
+                        f'<button type="submit">Search {kind}s at airport location</button></form>')
     else:
         checkin_part = ('<p class="muted">Check in on the <a href="' + url_for("board") + '">Check-In</a> '
                         'page to also search around your check-in location.</p>')
