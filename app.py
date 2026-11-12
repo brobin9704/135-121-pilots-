@@ -3293,7 +3293,7 @@ def friends():
                     f'<input id="add_friend_input" name="pilot_name" placeholder="Jane Doe" autocomplete="off" required>'
                     f'<button type="submit">Add friend</button></form>')
         add_items = "".join(
-            f'<li data-search="{esc(" ".join(x for x in [o["name"], o["airline"], o["base"], o["aircraft"]] if x).lower())}" '
+            f'<li data-search="{esc(((o["name"] or "").split() or [""])[0])}" '
             f'data-name="{esc(o["name"])}" style="cursor:pointer">'
             f'{_avatar_html(o["id"])}{esc(o["name"])} '
             f'<span class="muted">· {esc(o["airline"] or "")} {esc(o["base"] or "")} {esc(o["aircraft"] or "")}</span></li>'
@@ -3304,11 +3304,13 @@ def friends():
                      f'items=document.querySelectorAll("#add_friend_list li"),'
                      f'count=document.getElementById("add_friend_count");'
                      f'function filter(){{var q=input.value.trim().toLowerCase(),n=0;'
-                     f'items.forEach(function(li){{var hit=q&&li.getAttribute("data-search").indexOf(q)!==-1;'
+                     f'items.forEach(function(li){{var hit=q&&li.getAttribute("data-search").toLowerCase().indexOf(q)===0;'
                      f'li.style.display=hit?"":"none";if(hit)n++;}});'
                      f'count.textContent=q?(n+(n===1?" match":" matches")):"Type a name to find pilots.";}}'
                      f'items.forEach(function(li){{li.addEventListener("click",function(){{'
-                     f'input.value=li.getAttribute("data-name");filter();input.focus();}});}});'
+                     f'input.value=li.getAttribute("data-name");'
+                     f'items.forEach(function(x){{x.style.display="none";}});'
+                     f'count.textContent="";input.focus();}});}});'
                      f'input.addEventListener("input",filter);filter();}})();</script>')
         if duplicates:
             dup_items = "".join(
