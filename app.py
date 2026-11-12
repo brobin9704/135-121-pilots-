@@ -2169,7 +2169,7 @@ def current_checkin_html(checkin):
     return f"""<div class="card">{head}
       <p><strong>{status_html}</strong></p>
       <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
-      <p><a href="{url_for('edit_checkin')}">Edit check-in</a></p>
+      <p><a href="{url_for('edit_checkin')}">Edit location</a></p>
       <form method="post" action="{url_for('board')}" onsubmit="return confirm('Check out of this location?')"><input type="hidden" name="action" value="checkout">
       <button type="submit">Leaving the area</button></form></div>"""
 
