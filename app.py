@@ -1081,8 +1081,10 @@ def page(title, user, body, flash=None, error=None):
         first = esc(user["name"].split()[0]) if user["name"] else ""
         first_js = _json.dumps(first)
         logout = f'<a href="{url_for("logout")}" class="logout_link">Log out</a>' if title == "Home" else ""
+        sound_btn = ('<button id="sound_toggle" onclick="pccToggleSound(this)" title="Check-in and message sounds" '
+                     'style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;line-height:1">🔔</button>')
         chrome = (f'<div class="appname">Pilot &amp; Crew Community</div>'
-                  f'<div class="topbar"><span class="brand" id="greet">Hello, {first}</span>{logout}</div>'
+                  f'<div class="topbar"><span class="brand" id="greet">Hello, {first}</span>{sound_btn}{logout}</div>'
                   f'<script>(function(){{var h=new Date().getHours();'
                   f'var g=h<12?"Good morning":h<18?"Good afternoon":"Good evening";'
                   f'document.getElementById("greet").textContent=g+", "+{first_js};}})();</script>')
@@ -1104,7 +1106,8 @@ def page(title, user, body, flash=None, error=None):
             f'{_label(t, e)}</a>' for t, u, e in items)
         after = (f'<nav class="bnav">{bnav}</nav>'
                  f'{MINIMAP_JS}'
-                 '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}</script>')
+                 '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}</script>'
+                 f'{SOUND_JS}')
     pwa_head = ('<link rel="manifest" href="/manifest.json">'
                 '<meta name="theme-color" content="#0f172a">'
                 '<meta name="mobile-web-app-capable" content="yes">'
@@ -1239,6 +1242,31 @@ MINIMAP_JS = """
   var s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';s.onload=init;document.head.appendChild(s);
 })();
 </script>
+"""
+
+SOUND_JS = """
+<script>(function(){
+var on = localStorage.getItem("pcc_sounds") !== "off";
+var seen = {}, lastCheckin = null, lastUnread = null, ac = null;
+function audio(){ if(!ac){ try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(ac.state==="suspended"){ ac.resume(); } return ac; }
+document.addEventListener("pointerdown", function(){ audio(); }, {once:true});
+function tone(f, delay, dur){ var ctx = audio(); if(!ctx) return; var o = ctx.createOscillator(), g = ctx.createGain(); o.type = "sine"; o.frequency.value = f; var t = ctx.currentTime + delay; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur + 0.05); }
+function ring(){ tone(880, 0, 0.5); tone(1318.5, 0.18, 0.5); }
+function ding(){ tone(1046.5, 0, 0.3); }
+function banner(text){ var b = document.getElementById("pcc_alert"); if(!b){ b = document.createElement("div"); b.id = "pcc_alert"; b.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 14px;border-radius:10px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:92%;text-align:center"; b.onclick = function(){ b.remove(); }; document.body.appendChild(b); } b.textContent = text + "  (tap to dismiss)"; }
+function check(){ if(document.visibilityState !== "visible") return; fetch("/api/updates").then(function(r){ return r.json(); }).then(function(d){
+if(lastCheckin === null){ lastCheckin = d.checkin_id; lastUnread = d.unread; d.friends.forEach(function(f){ seen[f.id] = 1; }); return; }
+if(d.checkin_id !== lastCheckin){ lastCheckin = d.checkin_id; seen = {}; d.friends.forEach(function(f){ seen[f.id] = 1; }); lastUnread = d.unread; return; }
+d.friends.forEach(function(f){ if(!seen[f.id]){ seen[f.id] = 1; if(on){ ring(); } banner("🔔 " + f.name + " just checked in at " + f.airport + " · " + f.city); } });
+if(d.unread > lastUnread){ if(on){ ding(); } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
+lastUnread = d.unread;
+}).catch(function(){}); }
+setInterval(check, 30000);
+document.addEventListener("visibilitychange", function(){ if(document.visibilityState === "visible") check(); });
+check();
+var t = document.getElementById("sound_toggle"); if(t){ t.textContent = on ? "🔔" : "🔕"; }
+window.pccToggleSound = function(btn){ on = !on; localStorage.setItem("pcc_sounds", on ? "on" : "off"); btn.textContent = on ? "🔔" : "🔕"; };
+})();</script>
 """
 
 def hidden_review_ids():
@@ -2114,6 +2142,35 @@ def nearest_airport():
     if code is None:
         return jsonify({"error": "airport data unavailable"}), 503
     return jsonify({"code": code, "city": city, "name": name, "distance_mi": dist})
+
+
+@app.route("/api/updates")
+@login_required
+def api_updates():
+    """Polled by the open app (every 30s): friends newly checked in at the
+    user's place, plus the unread message count. Powers the ring/ding sounds."""
+    user = current_user()
+    db = get_db()
+    checkin = current_checkin(user["id"])
+    friends = []
+    if checkin:
+        rows = db.execute(
+            """SELECT c.*, u.name FROM checkins c
+               JOIN friends f ON f.friend_id = c.user_id
+               JOIN users u ON u.id = c.user_id
+               WHERE f.user_id = ? AND c.checked_out = 0""", (user["id"],)).fetchall()
+        friends = [{"id": r["id"], "name": r["name"],
+                    "airport": r["airport_code"], "city": r["city"]}
+                   for r in rows if is_current(r) and area_matches(checkin, r["airport_code"], r["city"])]
+    unread = db.execute("SELECT COUNT(*) AS n FROM messages WHERE recipient_id = ? AND is_read = 0",
+                        (user["id"],)).fetchone()["n"]
+    latest = db.execute(
+        """SELECT u.name FROM messages m JOIN users u ON u.id = m.sender_id
+           WHERE m.recipient_id = ? AND m.is_read = 0 ORDER BY m.created_at DESC, m.id DESC LIMIT 1""",
+        (user["id"],)).fetchone()
+    return jsonify({"checkin_id": checkin["id"] if checkin else None,
+                    "friends": friends, "unread": unread,
+                    "latest_from": latest["name"] if latest else None})
 
 def _slot_checkout_form(slot, label):
     """Small form that checks the user out of one place (hotel or restaurant)."""
