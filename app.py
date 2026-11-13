@@ -206,6 +206,7 @@ SQLITE_SCHEMA = """
         place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
         phone TEXT, address TEXT, lat REAL, lon REAL,
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+        safety INTEGER CHECK(safety BETWEEN 1 AND 5),
         tags TEXT, notes TEXT, is_anonymous INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -295,6 +296,7 @@ POSTGRES_SCHEMA = """
         place_name TEXT NOT NULL, airport_code TEXT, city TEXT,
         phone TEXT, address TEXT, lat REAL, lon REAL,
         rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+        safety INTEGER CHECK(safety BETWEEN 1 AND 5),
         tags TEXT, notes TEXT, is_anonymous INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -394,6 +396,7 @@ def init_db():
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS lat REAL")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS lon REAL")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_anonymous INTEGER NOT NULL DEFAULT 0")
+            cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS safety INTEGER CHECK(safety BETWEEN 1 AND 5)")
             # Widen the kind CHECK to include 'fbo' and 'attraction' (auto-named reviews_kind_check).
             cur.execute("ALTER TABLE reviews DROP CONSTRAINT IF EXISTS reviews_kind_check")
             cur.execute("ALTER TABLE reviews ADD CONSTRAINT reviews_kind_check CHECK (kind IN ('hotel','restaurant','fbo','attraction'))")
@@ -439,6 +442,10 @@ def init_db():
                 pass  # column already exists
         try:
             db.execute("ALTER TABLE reviews ADD COLUMN is_anonymous INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            db.execute("ALTER TABLE reviews ADD COLUMN safety INTEGER")
         except sqlite3.OperationalError:
             pass  # column already exists
         db.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
@@ -1314,7 +1321,10 @@ def review_card(r, user):
     code_html = (f'<a href="{url_for("airport_hub", code=code.upper())}">{esc(code)}</a>' if code
                  else '<span class="muted">—</span>')
     byline_avatar = "" if r["is_anonymous"] else _avatar_html(r["user_id"], 28)
-    return f"""<div class="card"><a href="{loc_url}" target="_blank" rel="noopener"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>
+    safety = _safety_val(r)
+    safety_html = (f' <span title="Safety — how safe the pilot felt here">🛡 {safety}/5</span>'
+                   if safety else "")
+    return f"""<div class="card"><a href="{loc_url}" target="_blank" rel="noopener"><strong>{esc(r['place_name'])}</strong></a> <span class="stars">{stars(r['rating'])}</span>{safety_html}
       <div class="muted">{code_html} · {esc(r['city'])} · {byline_avatar}by {esc(_author_name(r))}</div>
       {contact}{minimap}<div>{tags}</div><p>{esc(r['notes'])}</p>{photos}{own}{report}</div>"""
 
@@ -1325,16 +1335,22 @@ def place_aggregates(rows):
         key = ((r["place_name"] or "").strip().lower(), (r["airport_code"] or "").strip().upper(),
                (r["city"] or "").strip().lower())
         a = agg.setdefault(key, {"name": (r["place_name"] or "").strip(), "code": r["airport_code"],
-                                 "city": r["city"], "total": 0, "n": 0, "lat": None, "lon": None})
+                                 "city": r["city"], "total": 0, "n": 0, "stotal": 0, "sn": 0,
+                                 "lat": None, "lon": None})
         try:
             a["total"] += int(r["rating"] or 0)
         except (TypeError, ValueError):
             pass
+        s = _safety_val(r)
+        if s is not None:
+            a["stotal"] += s
+            a["sn"] += 1
         a["n"] += 1
         if a["lat"] is None and r["lat"] is not None:
             a["lat"], a["lon"] = r["lat"], r["lon"]
     out = [{"name": a["name"], "code": a["code"], "city": a["city"], "avg": a["total"] / a["n"],
-            "n": a["n"], "lat": a["lat"], "lon": a["lon"]}
+            "n": a["n"], "savg": (a["stotal"] / a["sn"]) if a["sn"] else None, "sn": a["sn"],
+            "lat": a["lat"], "lon": a["lon"]}
            for a in agg.values() if a["n"]]
     out.sort(key=lambda x: (-x["avg"], -x["n"], x["name"].lower()))
     return out
@@ -1346,7 +1362,7 @@ def saved_reviews_section(kind, user, q, scope, sort="new", tag=""):
         return (f'<div class="card"><h2>Saved pilot {label} reviews</h2>'
                 f'<p class="muted">Check in on the <a href="{url_for("board")}">Check-In</a> '
                 f'page to see saved reviews.</p></div>')
-    if sort not in ("new", "top"):
+    if sort not in ("new", "top", "safe"):
         sort = "new"
     tag = (tag or "").strip()
     if tag:
@@ -1357,6 +1373,9 @@ def saved_reviews_section(kind, user, q, scope, sort="new", tag=""):
                        if any(x.strip().lower() == tl for x in (r["tags"] or "").split(","))]
     if sort == "top":
         in_results = sorted(in_results, key=lambda r: (-(r["rating"] or 0), -(r["id"] or 0)))
+    if sort == "safe":
+        in_results = sorted(in_results,
+                            key=lambda r: (-(_safety_val(r) or 0), -(r["id"] or 0)))
     def _qs(**kw):
         base = {"q": q or "", "scope": scope, "sort": sort, "tag": tag}
         base.update(kw)
@@ -1371,7 +1390,8 @@ def saved_reviews_section(kind, user, q, scope, sort="new", tag=""):
                    f'<a href="{_qs(scope="all")}">All areas</a> '
                    f'(current check-in: {esc(checkin["airport_code"])} · {esc(checkin["city"])})</p>')
     sort_links = (f'<p>Sort: {"<strong>Newest</strong>" if sort == "new" else f"<a href=\"{_qs(sort="new")}\">Newest</a>"} | '
-                  f'{"<strong>Top rated</strong>" if sort == "top" else f"<a href=\"{_qs(sort="top")}\">Top rated</a>"}</p>')
+                  f'{"<strong>Top rated</strong>" if sort == "top" else f"<a href=\"{_qs(sort="top")}\">Top rated</a>"} | '
+                  f'{"<strong>Safest</strong>" if sort == "safe" else f"<a href=\"{_qs(sort="safe")}\">Safest</a>"}</p>')
     tag_list = _tags_for_kind(kind)
     tag_chips = []
     for t in tag_list:
@@ -1385,7 +1405,7 @@ def saved_reviews_section(kind, user, q, scope, sort="new", tag=""):
     top_html = ""
     if aggs:
         chips = "".join(
-            f'<a class="tag" href="{_qs(q=a["name"], tag="")}">★{a["avg"]:.1f} ({a["n"]}) · {esc(a["name"])}</a> '
+            f'<a class="tag" href="{_qs(q=a["name"], tag="")}">{esc(_agg_chip_text(a))}</a> '
             for a in aggs)
         top_html = f'<div class="card"><h2>Top rated {label}s</h2><p style="line-height:2.2">{chips}</p></div>'
     cards = "".join(review_card(r, user) for r in in_results) or '<p class="muted">No saved reviews match yet.</p>'
@@ -2687,6 +2707,38 @@ def _parse_coord(val):
     except (TypeError, ValueError):
         return None
     return f if abs(f) <= 180 else None
+
+def _parse_safety(val):
+    """Safety rating 1-5 from a form value, or None when unrated."""
+    try:
+        s = int(val)
+    except (TypeError, ValueError):
+        return None
+    return s if 1 <= s <= 5 else None
+
+def _safety_val(r):
+    """Safety rating 1-5 from a review row, or None when unrated."""
+    try:
+        s = r["safety"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    return _parse_safety(s)
+
+def _safety_options(selected=None):
+    """<option> list for the safety select; empty value means unrated."""
+    labels = {5: "5 — Very safe", 4: "4 — Safe", 3: "3 — Okay",
+              2: "2 — Uneasy", 1: "1 — Unsafe"}
+    opts = [f'<option value=""{" selected" if selected is None else ""}>No safety rating</option>']
+    opts += [f'<option value="{n}"{" selected" if selected == n else ""}>{labels[n]}</option>'
+             for n in (5, 4, 3, 2, 1)]
+    return "".join(opts)
+
+def _agg_chip_text(a):
+    """Top-rated chip text, with the safety average when any review rated it."""
+    text = f"★{a['avg']:.1f} ({a['n']})"
+    if a.get("savg") is not None:
+        text += f" · 🛡 {a['savg']:.1f}"
+    return text + f" · {a['name']}"
 @app.route("/reviews/new", methods=["GET", "POST"])
 @login_required
 def new_review():
@@ -2705,16 +2757,17 @@ def new_review():
                   request.form.get("airport_code", "").strip().upper(), request.form.get("city", "").strip(),
                   request.form.get("phone", "").strip(), request.form.get("address", "").strip(),
                   _parse_coord(request.form.get("lat")), _parse_coord(request.form.get("lon")),
-                  int(request.form.get("rating", 5)), tags, request.form.get("notes", "").strip(), anon)
+                  int(request.form.get("rating", 5)), _parse_safety(request.form.get("safety")),
+                  tags, request.form.get("notes", "").strip(), anon)
         if USE_POSTGRES:
             cur = db.execute(
-                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, lat, lon, rating, tags, notes, is_anonymous) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id", params)
+                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, lat, lon, rating, safety, tags, notes, is_anonymous) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id", params)
             review_id = cur.fetchone()["id"]
         else:
             cur = db.execute(
-                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, lat, lon, rating, tags, notes, is_anonymous) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", params)
+                "INSERT INTO reviews (user_id, kind, place_name, airport_code, city, phone, address, lat, lon, rating, safety, tags, notes, is_anonymous) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", params)
             review_id = cur.lastrowid
         _save_review_photos(db, review_id, request.files.getlist("photos"))
         db.commit()
@@ -2741,6 +2794,7 @@ def new_review():
       <label>Star rating</label><select name="rating">
       <option value="5">5 stars</option><option value="4">4 stars</option><option value="3">3 stars</option>
       <option value="2">2 stars</option><option value="1">1 star</option></select>
+      <label>Safety — how safe you felt here</label><select name="safety">{_safety_options()}</select>
       <label>Pilot tags</label><div>{boxes}</div>
       <label>Other tags (comma-separated)</label><input name="custom_tags">
       <label>Notes</label><textarea name="notes" rows="4"></textarea>
@@ -2783,6 +2837,7 @@ def _edit_review_form(vals, kind, tag_list, photo_rows):
       <input type="hidden" name="lat" value="{esc(str(vals.get('lat') or ''))}">
       <input type="hidden" name="lon" value="{esc(str(vals.get('lon') or ''))}">
       <label>Star rating</label><select name="rating">{opts}</select>
+      <label>Safety — how safe you felt here</label><select name="safety">{_safety_options(_parse_safety(vals.get("safety")))}</select>
       <label>Pilot tags</label><div>{boxes}</div>
       <label>Other tags (comma-separated)</label><input name="custom_tags" value="{esc(custom)}">
       <label>Notes</label><textarea name="notes" rows="4">{esc(vals.get('notes', ''))}</textarea>
@@ -2813,6 +2868,7 @@ def edit_review(review_id):
             "lat": _parse_coord(request.form.get("lat")),
             "lon": _parse_coord(request.form.get("lon")),
             "rating": request.form.get("rating", 5),
+            "safety": _parse_safety(request.form.get("safety")),
             "notes": request.form.get("notes", "").strip(),
         }
         chosen = request.form.getlist("tag")
@@ -2834,10 +2890,10 @@ def edit_review(review_id):
                         _edit_review_form(vals, kind, tag_list, photo_rows),
                         error=f"That would be {len(kept) + len(new_files)} photos — the limit is 5 per review.")
         db.execute(
-            "UPDATE reviews SET place_name=?, airport_code=?, city=?, phone=?, address=?, lat=?, lon=?, rating=?, tags=?, notes=?, is_anonymous=? "
+            "UPDATE reviews SET place_name=?, airport_code=?, city=?, phone=?, address=?, lat=?, lon=?, rating=?, safety=?, tags=?, notes=?, is_anonymous=? "
             "WHERE id=? AND user_id=?",
             (vals["place_name"], vals["airport_code"], vals["city"], vals["phone"], vals["address"],
-             vals["lat"], vals["lon"], rating, vals["tags"], vals["notes"], vals["is_anonymous"], review_id, user["id"]))
+             vals["lat"], vals["lon"], rating, vals["safety"], vals["tags"], vals["notes"], vals["is_anonymous"], review_id, user["id"]))
         for pid in remove_ids:
             db.execute("DELETE FROM photos WHERE id=? AND review_id=?", (pid, review_id))
         _save_review_photos(db, review_id, new_files)
@@ -2846,7 +2902,7 @@ def edit_review(review_id):
     vals = {"place_name": r["place_name"] or "", "airport_code": r["airport_code"] or "",
             "city": r["city"] or "", "phone": r["phone"] or "", "address": r["address"] or "",
             "lat": r["lat"], "lon": r["lon"], "is_anonymous": r["is_anonymous"],
-            "rating": r["rating"], "tags": r["tags"] or "", "notes": r["notes"] or ""}
+            "rating": r["rating"], "safety": _safety_val(r), "tags": r["tags"] or "", "notes": r["notes"] or ""}
     return page("Edit review", user, _edit_review_form(vals, kind, tag_list, photo_rows))
 
 
@@ -3165,7 +3221,7 @@ def airport_hub(code):
         dest = url_for("hotels") if kind == "hotel" else url_for("restaurants")
         return ("<p style='line-height:2.2'>" + "".join(
             f'<a class="tag" href="{dest}?q={urllib.parse.quote(a["name"])}&scope=all">'
-            f'★{a["avg"]:.1f} ({a["n"]}) · {esc(a["name"])}</a> ' for a in aggs) + "</p>")
+            f'{esc(_agg_chip_text(a))}</a> ' for a in aggs) + "</p>")
     friend_rows = db.execute(
         "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?",
         (user["id"],)).fetchall()
