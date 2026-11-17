@@ -1879,7 +1879,7 @@ def admin():
     def _remove_photo_form(uid):
         return (f' <form method="post" action="{url_for("admin_remove_photo", user_id=uid)}" '
                 f'style="display:inline;margin-left:8px">'
-                f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px">'
+                f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px" onclick="return confirm(\'Remove this profile photo?\')">'
                 f'Remove photo</button></form>')
     rows = "".join(
         f"<li>{_avatar_html(u['id'], 28)}{esc(u['name'])} — {esc(u['email'])} "
@@ -1931,7 +1931,7 @@ def profile_form(user):
         _has_photo = False
     remove_form = ('<form method="post" style="margin-top:8px"><input type="hidden" name="form" value="photo">'
                    '<input type="hidden" name="remove" value="1">'
-                   '<button type="submit" style="background:#7f1d1d;width:auto;padding:8px 12px">Remove photo</button></form>') if _has_photo else ""
+                   '<button type="submit" style="background:#7f1d1d;width:auto;padding:8px 12px" onclick="return confirm(\'Remove your profile photo?\')">Remove photo</button></form>') if _has_photo else ""
     photo_card = (f'<div class="card"><h2>Profile photo</h2>'
                   f'<p>{_avatar_html(user["id"], 72)}</p>'
                   f'<form method="post" enctype="multipart/form-data"><input type="hidden" name="form" value="photo">'
