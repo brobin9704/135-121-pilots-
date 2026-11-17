@@ -1114,7 +1114,8 @@ def page(title, user, body, flash=None, error=None):
         after = (f'<nav class="bnav">{bnav}</nav>'
                  f'{MINIMAP_JS}'
                  '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}</script>'
-                 f'{SOUND_JS}')
+                 f'{SOUND_JS}'
+                 f'{AVATAR_JS}')
     pwa_head = ('<link rel="manifest" href="/manifest.json">'
                 '<meta name="theme-color" content="#0f172a">'
                 '<meta name="mobile-web-app-capable" content="yes">'
@@ -1193,7 +1194,8 @@ def _avatar_html(user_id, size=36):
     st = (f"width:{size}px;height:{size}px;border-radius:50%;object-fit:cover;"
           f"vertical-align:middle;margin-right:6px")
     if row["profile_photo"]:
-        return f'<img src="{url_for("profile_photo", user_id=user_id)}" alt="" style="{st}">'
+        return (f'<img src="{url_for("profile_photo", user_id=user_id)}" alt="" '
+                f'style="{st}cursor:pointer" title="Tap to enlarge" onclick="showAvatar(this.src,event)">')
     return (f'<span style="display:inline-flex;align-items:center;justify-content:center;'
             f'{st}background:#334155;color:#e2e8f0;font-weight:700">{initial}</span>')
 
@@ -1274,6 +1276,25 @@ check();
 var t = document.getElementById("sound_toggle"); if(t){ t.textContent = on ? "🔔" : "🔕"; }
 window.pccToggleSound = function(btn){ on = !on; localStorage.setItem("pcc_sounds", on ? "on" : "off"); btn.textContent = on ? "🔔" : "🔕"; };
 })();</script>
+"""
+
+AVATAR_JS = """
+<script>
+function showAvatar(src, ev){
+  if(ev){ ev.stopPropagation(); ev.preventDefault(); }
+  var o = document.getElementById("avatar_overlay");
+  if(!o){
+    o = document.createElement("div");
+    o.id = "avatar_overlay";
+    o.style.cssText = "position:fixed;inset:0;background:rgba(2,6,23,0.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;box-sizing:border-box";
+    o.innerHTML = '<img id="avatar_full" style="max-width:92vw;max-height:88vh;border-radius:12px;object-fit:contain">';
+    o.onclick = function(){ o.style.display = "none"; };
+    document.body.appendChild(o);
+  }
+  document.getElementById("avatar_full").src = src;
+  o.style.display = "flex";
+}
+</script>
 """
 
 def hidden_review_ids():
