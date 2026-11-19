@@ -1912,13 +1912,13 @@ def admin():
         f"<span class='muted'>joined {esc(str(u['created_at'] or ''))}</span>"
         f"{_remove_photo_form(u['id']) if u['has_photo'] else ''}</li>"
         for u in users)
-    # One row per user: their latest login only.
+    # Every login, most recent first.
     recent = db.execute(
-        "SELECT u.id AS uid, u.name, u.email, MAX(le.logged_in_at) AS last_login "
+        "SELECT u.id AS uid, u.name, u.email, le.logged_in_at AS login_at "
         "FROM login_events le JOIN users u ON u.id = le.user_id "
-        "GROUP BY u.id ORDER BY last_login DESC LIMIT 100").fetchall()
+        "ORDER BY le.logged_in_at DESC, le.id DESC LIMIT 100").fetchall()
     login_rows = "".join(
-        f"<li>{_fmt_login_ts(r['last_login'])} — {esc(r['name'])} ({esc(r['email'])}) · "
+        f"<li>{_fmt_login_ts(r['login_at'])} — {esc(r['name'])} ({esc(r['email'])}) · "
         f"{esc(_checkin_text(r['uid']))}</li>"
         for r in recent)
     body = (f'<div class="card"><h2>App stats</h2>'
@@ -1927,7 +1927,7 @@ def admin():
             f'<strong>{n_logins}</strong> logins recorded</p>'
             f'<ul>{rows}</ul></div>'
             f'<div class="card"><h2>Recent logins</h2>'
-            f'<p class="muted">One row per user — their latest login. Logins are recorded from the Nov 8 update onward; logins before it were not tracked.</p>'
+            f'<p class="muted">Every login, most recent first (latest 100). Logins are recorded from the Nov 8 update onward; logins before it were not tracked.</p>'
             f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul></div>')
     return page("Admin", user, body)
 
