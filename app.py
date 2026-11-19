@@ -1912,23 +1912,38 @@ def admin():
         f"<span class='muted'>joined {esc(str(u['created_at'] or ''))}</span>"
         f"{_remove_photo_form(u['id']) if u['has_photo'] else ''}</li>"
         for u in users)
-    # Every login, most recent first.
+    # Every login, most recent first, 20 per page.
+    per_page = 20
+    total_pages = max(1, (n_logins + per_page - 1) // per_page)
+    logins_page = request.args.get("logins_page", 1, type=int) or 1
+    logins_page = max(1, min(logins_page, total_pages))
+    offset = (logins_page - 1) * per_page
     recent = db.execute(
         "SELECT u.id AS uid, u.name, u.email, le.logged_in_at AS login_at "
         "FROM login_events le JOIN users u ON u.id = le.user_id "
-        "ORDER BY le.logged_in_at DESC, le.id DESC LIMIT 100").fetchall()
+        "ORDER BY le.logged_in_at DESC, le.id DESC LIMIT ? OFFSET ?",
+        (per_page, offset)).fetchall()
     login_rows = "".join(
         f"<li>{_fmt_login_ts(r['login_at'])} — {esc(r['name'])} ({esc(r['email'])}) · "
         f"{esc(_checkin_text(r['uid']))}</li>"
         for r in recent)
+    first = offset + 1 if recent else 0
+    last = offset + len(recent)
+    nav = ""
+    if logins_page > 1:
+        nav += f'<a href="{url_for("admin", logins_page=logins_page - 1)}">← Previous</a> '
+    if logins_page < total_pages:
+        nav += f'<a href="{url_for("admin", logins_page=logins_page + 1)}">Next →</a>'
+    paging = (f'<p>Showing {first}–{last} of {n_logins} logins · '
+              f'Page {logins_page} of {total_pages}</p>{nav}')
     body = (f'<div class="card"><h2>App stats</h2>'
             f'<p><strong>{len(users)}</strong> registered users · '
             f'<strong>{n_checkins}</strong> check-ins · <strong>{n_reviews}</strong> reviews · '
             f'<strong>{n_logins}</strong> logins recorded</p>'
             f'<ul>{rows}</ul></div>'
             f'<div class="card"><h2>Recent logins</h2>'
-            f'<p class="muted">Every login, most recent first (latest 100). Logins are recorded from the Nov 8 update onward; logins before it were not tracked.</p>'
-            f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul></div>')
+            f'<p class="muted">Every login, most recent first, 20 at a time. Logins are recorded from the Nov 8 update onward; logins before it were not tracked.</p>'
+            f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul>{paging}</div>')
     return page("Admin", user, body)
 
 @app.route("/admin/remove-photo/<int:user_id>", methods=["POST"])
