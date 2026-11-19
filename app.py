@@ -643,22 +643,28 @@ def nominatim_fallback(lat, lon, radius_miles, kind, city):
     results from the wrong place.
     """
     import math
-    term = {"hotel": "hotels", "restaurant": "restaurants", "fbo": "FBO"}.get(kind, "attractions")
+    # Restaurants: Nominatim's generic "restaurants" search is capped at 50
+    # importance-ranked results and routinely misses fast-food chains (a Taco
+    # Bell next door didn't make the cut), so also query "fast food" and merge.
+    terms = {"hotel": ["hotels"], "restaurant": ["restaurants", "fast food"],
+             "fbo": ["FBO"]}.get(kind, ["attractions"])
     # Bounding box around the search point (a touch wider than the radius; the
     # haversine filter below does the precise cut).
     lat_d = radius_miles * 1.2 / 69.0
     lon_d = radius_miles * 1.2 / (69.0 * max(0.2, math.cos(math.radians(lat))))
     viewbox = f"{lon - lon_d},{lat + lat_d},{lon + lon_d},{lat - lat_d}"
-    params = urllib.parse.urlencode({
-        "q": term, "format": "json", "limit": 50, "extratags": 1, "addressdetails": 1,
-        "viewbox": viewbox, "bounded": 1,
-    })
-    try:
-        results = http_get_json(f"{NOMINATIM_URL}?{params}")
-    except Exception:
-        return []
-    out = []
-    for r in results:
+    all_results = []
+    for term in terms:
+        params = urllib.parse.urlencode({
+            "q": term, "format": "json", "limit": 50, "extratags": 1, "addressdetails": 1,
+            "viewbox": viewbox, "bounded": 1,
+        })
+        try:
+            all_results += http_get_json(f"{NOMINATIM_URL}?{params}")
+        except Exception:
+            continue
+    out, seen = [], set()
+    for r in all_results:
         try:
             rlat, rlon = float(r["lat"]), float(r["lon"])
         except (KeyError, TypeError, ValueError):
@@ -666,6 +672,10 @@ def nominatim_fallback(lat, lon, radius_miles, kind, city):
         dist = haversine_miles(lat, lon, rlat, rlon)
         if dist > radius_miles + 0.05:
             continue
+        key = ((r.get("name") or "").lower(), round(rlat, 4), round(rlon, 4))
+        if key in seen:
+            continue
+        seen.add(key)
         extra = r.get("extratags") or {}
         addr = r.get("address") or {}
         street = " ".join(x for x in [addr.get("house_number"), addr.get("road")] if x)
@@ -726,10 +736,11 @@ def _parse_overpass_elements(elements, clat, clon, radius_miles):
 def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", tail_timeout=30):
     """Real OpenStreetMap results around a coordinate pair.
 
-    Overpass and the Nominatim fallback run in parallel on a shared pool;
-    Overpass gets a short head start for its richer results, then the first
-    usable results from either source win. A slow Overpass no longer blocks
-    the fallback, and returning never waits for a straggler thread.
+    Overpass and the Nominatim fallback run in parallel on a shared pool.
+    If the fallback finishes first, Overpass gets a short grace to land,
+    since its results are complete (every place in the radius); otherwise
+    the first usable results win. A slow Overpass no longer blocks the
+    fallback, and returning never waits for a straggler thread.
     tail_timeout bounds the wait for a slow source (FBOs use a short one —
     the Nominatim fallback can't find FBOs, so a long wait is pure delay).
     """
@@ -753,21 +764,35 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", t
     over_fut = _SEARCH_POOL.submit(_overpass_results)
     nom_fut = _SEARCH_POOL.submit(nominatim_fallback, lat, lon, radius_miles, kind, city_hint)
     try:
-        # First usable results win. Overpass is richer when healthy; the
-        # fallback is usually faster — either way the pilot isn't left waiting
-        # on a degraded source.
+        # First usable results win, with one exception: Overpass is the
+        # complete source (every place in the radius), while the Nominatim
+        # fallback is capped and importance-ranked. If the fallback finishes
+        # first, Overpass gets a short grace to land before we settle for it.
         done, _ = concurrent.futures.wait([over_fut, nom_fut], timeout=6,
                                           return_when=concurrent.futures.FIRST_COMPLETED)
+        held = None
         for fut in done:
             try:
                 results = fut.result()
             except Exception:
                 results = []
             if results:
-                for other in (over_fut, nom_fut):
-                    if other is not fut:
-                        other.cancel()
-                return centre, results, None
+                if fut is over_fut:
+                    nom_fut.cancel()
+                    return centre, results, None
+                held = results
+        if held is not None:
+            # Nominatim finished first, but its list is capped at 50
+            # importance-ranked results and can miss places right next door.
+            # Overpass returns everything in the radius, so give it a short
+            # grace to land before settling for the fallback.
+            try:
+                over_results = over_fut.result(timeout=3)
+            except Exception:
+                over_results = []
+            if over_results:
+                return centre, over_results, None
+            return centre, held, None
         # The first finisher came up empty (or nothing finished in 6s): take
         # the first usable results from whichever finishes next.
         try:
