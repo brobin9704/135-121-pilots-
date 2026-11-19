@@ -2400,14 +2400,8 @@ def fbo_area_html(db, user, checkin):
         html += external_results_html("fbo", (centre, results, error, radius, checkin), user, with_map=False)
     html += (f'<p><a href="{manual}">Add FBO review</a> '
              f'<span class="muted">— don\u2019t see yours? add it by name.</span></p></div>')
-    fbo_rows = db.execute(
-        """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
-           WHERE r.kind = 'fbo' AND (upper(r.airport_code) = ? OR lower(r.city) = ?)
-           ORDER BY r.created_at DESC, r.id DESC LIMIT 5""",
-        ((checkin["airport_code"] or "").upper(), (checkin["city"] or "").strip().lower())).fetchall()
-    fbo_rows = visible_reviews(fbo_rows, user)
-    if fbo_rows:
-        html += "".join(review_card(r, user) for r in fbo_rows)
+    # FBO reviews live in "Pilot reviews in this area" below — rendering them
+    # here too showed each one twice on Home.
     return html
 
 
