@@ -3961,7 +3961,7 @@ def manifest():
                   {"src": PWA_ICON_SVG, "sizes": "any", "type": "image/svg+xml"}],
     })
 
-SW_JS = """const CACHE = "pcc-v3";
+SW_JS = """const CACHE = "pcc-v4";
 const CORE = ["/static/airports.json", "/offline", "/manifest.json"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
@@ -3974,6 +3974,7 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const u = new URL(e.request.url);
   if (u.origin !== location.origin || e.request.method !== "GET") return;
+  if (u.pathname.startsWith("/api/")) return; // live data only: never serve the poller a cached answer
   if (e.request.mode === "navigate") {
     e.respondWith(fetch(e.request).catch(() => caches.match("/offline")));
     return;
