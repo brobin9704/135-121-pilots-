@@ -1315,9 +1315,10 @@ MINIMAP_JS = """
 SOUND_JS = """
 <script>(function(){
 var on = localStorage.getItem("pcc_sounds") !== "off";
+function soundsOn(){ return localStorage.getItem("pcc_sounds") !== "off"; }
 var seen = {}, lastCheckin = null, lastUnread = null, ac = null;
 function audio(){ if(!ac){ try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(ac.state==="suspended"){ ac.resume(); } return ac; }
-document.addEventListener("pointerdown", function(){ audio(); }, {once:true});
+document.addEventListener("pointerdown", function(){ audio(); });
 function tone(f, delay, dur, vol){ var ctx = audio(); if(!ctx) return; var o = ctx.createOscillator(), g = ctx.createGain(); o.type = "sine"; o.frequency.value = f; var t = ctx.currentTime + delay; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur + 0.05); }
 var SOUND_PATTERNS = {
   ding: [[1046.5, 0, 0.3]],
@@ -1338,8 +1339,8 @@ function banner(text){ var b = document.getElementById("pcc_alert"); if(!b){ b =
 function check(){ if(document.visibilityState !== "visible") return; fetch("/api/updates").then(function(r){ return r.json(); }).then(function(d){
 if(lastCheckin === null){ lastCheckin = d.checkin_id; lastUnread = d.unread; d.friends.forEach(function(f){ seen[f.id] = 1; }); return; }
 if(d.checkin_id !== lastCheckin){ lastCheckin = d.checkin_id; seen = {}; d.friends.forEach(function(f){ seen[f.id] = 1; }); lastUnread = d.unread; return; }
-d.friends.forEach(function(f){ if(!seen[f.id]){ seen[f.id] = 1; if(on){ ring(); } banner("🔔 " + f.name + " just checked in at " + f.airport + " · " + f.city); } });
-if(d.unread > lastUnread){ if(on){ ding(); } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
+d.friends.forEach(function(f){ if(!seen[f.id]){ seen[f.id] = 1; if(soundsOn()){ ring(); } banner("🔔 " + f.name + " just checked in at " + f.airport + " · " + f.city); } });
+if(d.unread > lastUnread){ if(soundsOn()){ ding(); } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
 lastUnread = d.unread;
 }).catch(function(){}); }
 setInterval(check, 10000);
@@ -1348,7 +1349,7 @@ if ("serviceWorker" in navigator) {
     if (ev.data && ev.data.type === "pcc-push") { check(); }
   });
 }
-document.addEventListener("visibilitychange", function(){ if(document.visibilityState === "visible") check(); });
+document.addEventListener("visibilitychange", function(){ if(document.visibilityState === "visible"){ audio(); check(); } });
 check();
 var t = document.getElementById("sound_toggle"); if(t){ t.textContent = on ? "🔔" : "🔕"; }
 window.pccToggleSound = function(btn){ on = !on; localStorage.setItem("pcc_sounds", on ? "on" : "off"); btn.textContent = on ? "🔔" : "🔕"; };
