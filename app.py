@@ -491,12 +491,19 @@ def current_user():
     row = get_db().execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
     return row
 
+def _safe_next():
+    nxt = request.args.get("next") or request.form.get("next") or ""
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return nxt
+    return None
+
+
 def login_required(view):
     from functools import wraps
     @wraps(view)
     def wrapped(*a, **kw):
         if not current_user():
-            return redirect(url_for("login"))
+            return redirect(url_for("login", next=request.path))
         return view(*a, **kw)
     return wrapped
 
@@ -1168,6 +1175,7 @@ def page(title, user, body, flash=None, error=None):
                  f'{SOUND_JS}'
                  f'{AVATAR_JS}')
     pwa_head = ('<link rel="manifest" href="/manifest.json">'
+                '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
                 '<meta name="theme-color" content="#0f172a">'
                 '<meta name="mobile-web-app-capable" content="yes">'
                 '<meta name="apple-mobile-web-app-capable" content="yes">'
@@ -1334,7 +1342,12 @@ d.friends.forEach(function(f){ if(!seen[f.id]){ seen[f.id] = 1; if(on){ ring(); 
 if(d.unread > lastUnread){ if(on){ ding(); } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
 lastUnread = d.unread;
 }).catch(function(){}); }
-setInterval(check, 30000);
+setInterval(check, 10000);
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", function(ev){
+    if (ev.data && ev.data.type === "pcc-push") { check(); }
+  });
+}
 document.addEventListener("visibilitychange", function(){ if(document.visibilityState === "visible") check(); });
 check();
 var t = document.getElementById("sound_toggle"); if(t){ t.textContent = on ? "🔔" : "🔕"; }
@@ -1350,7 +1363,9 @@ PUSH_JS = """
 function pccB64ToU8(s){ var pad = "=".repeat((4 - s.length % 4) % 4); var b64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/"); var raw = window.atob(b64); var out = new Uint8Array(raw.length); for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out; }
 function pccPushStatus(t){ var el = document.getElementById("push_status"); if(el) el.textContent = t; }
 function pccPushButtons(on){ var e = document.getElementById("push_enable"), d = document.getElementById("push_disable"); if(e) e.style.display = on ? "none" : ""; if(d) d.style.display = on ? "" : "none"; }
-function pccPushRefresh(){ if(!("serviceWorker" in navigator) || !("PushManager" in window)){ pccPushStatus("Push isn't supported in this browser."); var e=document.getElementById("push_enable"); if(e) e.style.display="none"; return; } navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(sub){ pccPushStatus(sub ? "Push notifications are on for this device." : "Push notifications are off."); pccPushButtons(!!sub); }).catch(function(){ pccPushStatus("Push notifications are off."); pccPushButtons(false); }); }
+function pccIsIOS(){ return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); }
+function pccStandalone(){ return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; }
+function pccPushRefresh(){ var e=document.getElementById("push_enable"); if(pccIsIOS() && !pccStandalone()){ pccPushStatus("On iPhone: add this app to your Home Screen first (Share → Add to Home Screen), then open it from the Home Screen and turn notifications on there."); if(e) e.style.display="none"; var d=document.getElementById("push_disable"); if(d) d.style.display="none"; return; } if(!("serviceWorker" in navigator) || !("PushManager" in window)){ pccPushStatus(pccIsIOS() ? "Push notifications need iOS 16.4 or later." : "Push isn't supported in this browser."); if(e) e.style.display="none"; return; } navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(sub){ pccPushStatus(sub ? "Push notifications are on for this device." : "Push notifications are off."); pccPushButtons(!!sub); }).catch(function(){ pccPushStatus("Push notifications are off."); pccPushButtons(false); }); }
 function pccPushEnable(){ if(Notification.permission === "denied"){ pccPushStatus("Notifications are blocked for this site — allow them in your browser settings, then try again."); return; } Notification.requestPermission().then(function(perm){ if(perm !== "granted"){ pccPushStatus("Notifications not allowed."); return; } return fetch("/push/vapid-public-key").then(function(r){ return r.json(); }).then(function(d){ if(!d.public_key) throw new Error("no key"); return navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pccB64ToU8(d.public_key) }); }); }).then(function(sub){ return fetch("/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub.toJSON()) }).then(function(){ pccPushStatus("Push notifications are on for this device."); pccPushButtons(true); }); }); }).catch(function(){ pccPushStatus("Couldn't turn push on — try again."); }); }
 function pccPushDisable(){ navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(sub){ if(!sub) return null; var ep = sub.endpoint; return sub.unsubscribe().then(function(){ return fetch("/push/unsubscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: ep }) }); }); }).then(function(){ pccPushStatus("Push notifications are off."); pccPushButtons(false); }).catch(function(){ pccPushStatus("Couldn't turn push off — try again."); }); }
 pccPushRefresh();
@@ -1582,7 +1597,7 @@ def login():
                            (row["id"], now))
                 db.commit()
             session["user_id"] = row["id"]
-            return redirect(url_for("index"))
+            return redirect(_safe_next() or url_for("index"))
         return login_page(error="Email or password did not match.")
     return login_page()
 
@@ -3781,7 +3796,8 @@ def _notify_message(sender, to_id, body):
                f"Hi {to_user['name']},\n\n{sender['name']} sent you a message "
                f"on Pilots and Crew Community:\n\n\"{body[:500]}\"\n\n"
                f"Log in at {thread_url} to reply.\n")
-    _send_push(to_id, f"New message from {sender['name']}", body[:200],
+    # The push itself carries no content: the message is only visible after login.
+    _send_push(to_id, "Pilot & Crew Community", "You have a new message. Log in to read it.",
                f"/messages/{sender['id']}")
 
 
@@ -3911,6 +3927,25 @@ PWA_ICON_SVG = (
     "%3Ctext x='256' y='352' font-size='300' text-anchor='middle'%3E%E2%9C%88%EF%B8%8F%3C/text%3E%3C/svg%3E"
 )
 
+ICON_512_B64 = "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"
+ICON_192_B64 = "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"
+ICON_APPLE_B64 = "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"
+
+@app.route("/icon-192.png")
+def icon_192():
+    import base64
+    return Response(base64.b64decode(ICON_192_B64), mimetype="image/png")
+
+@app.route("/icon-512.png")
+def icon_512():
+    import base64
+    return Response(base64.b64decode(ICON_512_B64), mimetype="image/png")
+
+@app.route("/apple-touch-icon.png")
+def apple_touch_icon():
+    import base64
+    return Response(base64.b64decode(ICON_APPLE_B64), mimetype="image/png")
+
 @app.route("/manifest.json")
 def manifest():
     return jsonify({
@@ -3920,10 +3955,12 @@ def manifest():
         "display": "standalone",
         "background_color": "#0f172a",
         "theme_color": "#0f172a",
-        "icons": [{"src": PWA_ICON_SVG, "sizes": "any", "type": "image/svg+xml"}],
+        "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                  {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                  {"src": PWA_ICON_SVG, "sizes": "any", "type": "image/svg+xml"}],
     })
 
-SW_JS = """const CACHE = "pcc-v2";
+SW_JS = """const CACHE = "pcc-v3";
 const CORE = ["/static/airports.json", "/offline", "/manifest.json"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
@@ -3956,9 +3993,17 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("push", (e) => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch (err) {}
-  const title = data.title || "Pilot & Crew Community";
-  const options = { body: data.body || "", tag: data.tag || "pcc", data: { url: data.url || "/" } };
-  e.waitUntil(self.registration.showNotification(title, options));
+  e.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => c.visibilityState === "visible");
+    if (open) {
+      // App is open: wake the page so it rings right away; no banner needed.
+      open.postMessage({ type: "pcc-push", url: data.url || "/" });
+      return;
+    }
+    const title = data.title || "Pilot & Crew Community";
+    const options = { body: data.body || "", tag: data.tag || "pcc", data: { url: data.url || "/" } };
+    return self.registration.showNotification(title, options);
+  }));
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
