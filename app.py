@@ -1777,7 +1777,7 @@ ATC_AUDIO_JS = """
       function fin(){ if(!done){ done=true; res(); } }
       if(!HAS_TTS){ fin(); return; }
       try{
-        speechSynthesis.cancel();
+        if(speechSynthesis.speaking||speechSynthesis.pending){ speechSynthesis.cancel(); }
         var u=new SpeechSynthesisUtterance(text);
         if(voice) u.voice=voice;
         u.rate=1.02+Math.random()*0.12;
@@ -1787,7 +1787,8 @@ ATC_AUDIO_JS = """
         setTimeout(fin,15000);
         speaking=true;
         squelch();
-        setTimeout(function(){ staticBed(Math.min(20,2+text.length*0.09)); speechSynthesis.speak(u); },140);
+        staticBed(Math.min(20,2+text.length*0.09));
+        speechSynthesis.speak(u);
       }catch(_){ fin(); }
     });
   }
@@ -1820,7 +1821,7 @@ ATC_AUDIO_JS = """
   }
   document.addEventListener('visibilitychange',function(){
     if(document.hidden){ stop(); }
-    else if(enabled&&started&&!speaking&&!timer){ loop(); }
+    else { if(AC&&AC.state==='suspended'){ AC.resume().catch(function(){}); } if(enabled&&started&&!speaking&&!timer){ loop(); } }
   });
   function arm(e){
     if(e&&e.target&&e.target.closest&&e.target.closest('#atc_toggle')) return;
