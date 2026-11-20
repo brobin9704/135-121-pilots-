@@ -240,6 +240,19 @@ SQLITE_SCHEMA = """
         logged_in_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_login_events_user ON login_events(user_id, logged_in_at);
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
 """
 
 POSTGRES_SCHEMA = """
@@ -330,6 +343,19 @@ POSTGRES_SCHEMA = """
         logged_in_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_login_events_user ON login_events(user_id, logged_in_at);
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
 """
 
 def _translate(sql):
@@ -1319,6 +1345,18 @@ var rs = document.getElementById("ring_sound"); if(rs){ rs.value = ringSound(); 
 })();</script>
 """
 
+PUSH_JS = """
+<script>
+function pccB64ToU8(s){ var pad = "=".repeat((4 - s.length % 4) % 4); var b64 = (s + pad).replace(/-/g, "+").replace(/_/g, "/"); var raw = window.atob(b64); var out = new Uint8Array(raw.length); for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out; }
+function pccPushStatus(t){ var el = document.getElementById("push_status"); if(el) el.textContent = t; }
+function pccPushButtons(on){ var e = document.getElementById("push_enable"), d = document.getElementById("push_disable"); if(e) e.style.display = on ? "none" : ""; if(d) d.style.display = on ? "" : "none"; }
+function pccPushRefresh(){ if(!("serviceWorker" in navigator) || !("PushManager" in window)){ pccPushStatus("Push isn't supported in this browser."); var e=document.getElementById("push_enable"); if(e) e.style.display="none"; return; } navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(sub){ pccPushStatus(sub ? "Push notifications are on for this device." : "Push notifications are off."); pccPushButtons(!!sub); }).catch(function(){ pccPushStatus("Push notifications are off."); pccPushButtons(false); }); }
+function pccPushEnable(){ if(Notification.permission === "denied"){ pccPushStatus("Notifications are blocked for this site — allow them in your browser settings, then try again."); return; } Notification.requestPermission().then(function(perm){ if(perm !== "granted"){ pccPushStatus("Notifications not allowed."); return; } return fetch("/push/vapid-public-key").then(function(r){ return r.json(); }).then(function(d){ if(!d.public_key) throw new Error("no key"); return navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pccB64ToU8(d.public_key) }); }); }).then(function(sub){ return fetch("/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub.toJSON()) }).then(function(){ pccPushStatus("Push notifications are on for this device."); pccPushButtons(true); }); }); }).catch(function(){ pccPushStatus("Couldn't turn push on — try again."); }); }
+function pccPushDisable(){ navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(sub){ if(!sub) return null; var ep = sub.endpoint; return sub.unsubscribe().then(function(){ return fetch("/push/unsubscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: ep }) }); }); }).then(function(){ pccPushStatus("Push notifications are off."); pccPushButtons(false); }).catch(function(){ pccPushStatus("Couldn't turn push off — try again."); }); }
+pccPushRefresh();
+</script>
+"""
+
 AVATAR_JS = """
 <script>
 function showAvatar(src, ev){
@@ -2010,6 +2048,11 @@ def profile_form(user):
     <button type="button" onclick="pccTestSound('msg')" style="width:auto">Test</button>
     <label>Check-in sound</label><select id="ring_sound"><option value="ring">Ring</option><option value="triple">Triple chime</option><option value="phone">Phone ring</option><option value="soft">Soft bell</option></select>
     <button type="button" onclick="pccTestSound('ring')" style="width:auto">Test</button></div>
+    <div class="card"><h2>Push notifications</h2>
+    <p class="muted">Alerts on this device even when the app is closed. Uses your phone's notification sound.</p>
+    <p id="push_status">Checking…</p>
+    <button type="button" id="push_enable" onclick="pccPushEnable()" style="width:auto;display:none">Enable notifications</button>
+    <button type="button" id="push_disable" onclick="pccPushDisable()" style="width:auto;display:none">Disable notifications</button></div>{PUSH_JS}
     <div class="card"><h2>Change password</h2>
     <form method="post"><input type="hidden" name="form" value="password">
     <label>Current password</label><input type="password" name="current_password" required autocomplete="current-password">
@@ -2632,6 +2675,8 @@ def board():
                         send_email(fr["email"], f"{user['name']} checked in at {code} / {city}",
                                    f"{user['name']} just checked in at {code} / {city}, where you are checked in too.\n\n"
                                    "Open Pilot & Crew Community to say hi.")
+                        _send_push(fr["id"], f"{user['name']} checked in at {code} / {city}",
+                                   f"{user['name']} just checked in at {code} / {city}, where you are checked in too.", "/")
             else:
                 flask_flash(f"Check-in saved for {start} — it will become your current check-in on that date.")
             return redirect(url_for("index"))
@@ -3601,6 +3646,130 @@ def _conversation_rows(user_id):
         (user_id, user_id, user_id)).fetchall()
 
 
+def _get_vapid_keys():
+    """VAPID keypair for Web Push, generated once and kept in settings.
+    Returns (private_key_b64url, public_key_b64url), or (None, None) if
+    the keys cannot be generated or read. No secret ever leaves the server:
+    only the public key is served to clients."""
+    try:
+        db = get_db()
+        row = db.execute("SELECT value FROM settings WHERE key=?", ("vapid_private",)).fetchone()
+        if row:
+            pub = db.execute("SELECT value FROM settings WHERE key=?", ("vapid_public",)).fetchone()
+            return row["value"], (pub["value"] if pub else None)
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives import serialization
+        import base64
+        key = ec.generate_private_key(ec.SECP256R1())
+        priv = base64.urlsafe_b64encode(key.private_numbers().private_value.to_bytes(32, "big")).rstrip(b"=").decode()
+        pub_raw = key.public_key().public_bytes(serialization.Encoding.X962,
+                                                serialization.PublicFormat.UncompressedPoint)
+        pub = base64.urlsafe_b64encode(pub_raw).rstrip(b"=").decode()
+        try:
+            db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ("vapid_private", priv))
+            db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ("vapid_public", pub))
+            db.commit()
+        except Exception:
+            db.rollback()
+            row = db.execute("SELECT value FROM settings WHERE key=?", ("vapid_private",)).fetchone()
+            if row:
+                pub = db.execute("SELECT value FROM settings WHERE key=?", ("vapid_public",)).fetchone()
+                return row["value"], (pub["value"] if pub else None)
+            return None, None
+        return priv, pub
+    except Exception:
+        return None, None
+
+
+def _send_push(user_id, title, body, url="/"):
+    """Send a Web Push notification to all of the user's subscribed devices.
+    Never raises; prunes subscriptions the push service reports as gone."""
+    try:
+        priv, _pub = _get_vapid_keys()
+        if not priv:
+            return False
+        try:
+            from pywebpush import webpush, WebPushException
+        except ImportError:
+            return False
+        db = get_db()
+        subs = db.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id=?",
+                          (user_id,)).fetchall()
+        if not subs:
+            return False
+        import json as _json
+        payload = _json.dumps({"title": title, "body": body, "url": url, "tag": "pcc"})
+        sent = False
+        for s in subs:
+            try:
+                webpush({"endpoint": s["endpoint"], "keys": {"p256dh": s["p256dh"], "auth": s["auth"]}},
+                        data=payload,
+                        vapid_private_key=priv,
+                        vapid_claims={"sub": "https://pilots-135-121.onrender.com"})
+                sent = True
+            except WebPushException as e:
+                if e.response is not None and e.response.status_code in (404, 410):
+                    try:
+                        db.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (s["endpoint"],))
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+            except Exception:
+                pass
+        return sent
+    except Exception:
+        return False
+
+
+@app.route("/push/vapid-public-key")
+@login_required
+def push_vapid_key():
+    _priv, pub = _get_vapid_keys()
+    if not pub:
+        return jsonify({"error": "unavailable"}), 503
+    return jsonify({"public_key": pub})
+
+
+@app.route("/push/subscribe", methods=["POST"])
+@login_required
+def push_subscribe():
+    user = current_user()
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"error": "bad json"}), 400
+    endpoint = (data.get("endpoint") or "").strip()
+    keys = data.get("keys") or {}
+    p256dh = (keys.get("p256dh") or "").strip()
+    auth = (keys.get("auth") or "").strip()
+    if not endpoint.startswith("https://") or not p256dh or not auth:
+        return jsonify({"error": "bad subscription"}), 400
+    db = get_db()
+    db.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (endpoint,))
+    db.execute("INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?,?,?,?)",
+               (user["id"], endpoint, p256dh, auth))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/push/unsubscribe", methods=["POST"])
+@login_required
+def push_unsubscribe():
+    user = current_user()
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        data = {}
+    endpoint = (data.get("endpoint") or "").strip()
+    db = get_db()
+    if endpoint:
+        db.execute("DELETE FROM push_subscriptions WHERE user_id=? AND endpoint=?", (user["id"], endpoint))
+    else:
+        db.execute("DELETE FROM push_subscriptions WHERE user_id=?", (user["id"],))
+    db.commit()
+    return jsonify({"ok": True})
+
+
 def _notify_message(sender, to_id, body):
     """Email the recipient about a new message (silent no-op if email is off)."""
     to_user = get_db().execute("SELECT email, name FROM users WHERE id=?", (to_id,)).fetchone()
@@ -3612,6 +3781,8 @@ def _notify_message(sender, to_id, body):
                f"Hi {to_user['name']},\n\n{sender['name']} sent you a message "
                f"on Pilots and Crew Community:\n\n\"{body[:500]}\"\n\n"
                f"Log in at {thread_url} to reply.\n")
+    _send_push(to_id, f"New message from {sender['name']}", body[:200],
+               f"/messages/{sender['id']}")
 
 
 @app.route("/messages", methods=["GET", "POST"])
@@ -3752,7 +3923,7 @@ def manifest():
         "icons": [{"src": PWA_ICON_SVG, "sizes": "any", "type": "image/svg+xml"}],
     })
 
-SW_JS = """const CACHE = "pcc-v1";
+SW_JS = """const CACHE = "pcc-v2";
 const CORE = ["/static/airports.json", "/offline", "/manifest.json"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
@@ -3781,6 +3952,26 @@ self.addEventListener("fetch", (e) => {
       return hit || net;
     })
   );
+});
+self.addEventListener("push", (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch (err) {}
+  const title = data.title || "Pilot & Crew Community";
+  const options = { body: data.body || "", tag: data.tag || "pcc", data: { url: data.url || "/" } };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(clients.matchAll({ type: "window" }).then((list) => {
+    for (const c of list) {
+      if (c.url.indexOf(self.location.origin) === 0) {
+        if ("navigate" in c) { return c.navigate(url).then(() => c.focus()).catch(() => c.focus()); }
+        return c.focus();
+      }
+    }
+    if (clients.openWindow) return clients.openWindow(url);
+  }));
 });
 """
 
