@@ -3896,7 +3896,7 @@ def conversation(user_id):
     db.commit()
     rows = db.execute(
         "SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) "
-        "OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at, id",
+        "OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at DESC, id DESC",
         (user["id"], other["id"], other["id"], user["id"])).fetchall()
     msg_html = []
     for r in rows:
