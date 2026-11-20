@@ -1335,12 +1335,21 @@ function msgSound(){ return localStorage.getItem("pcc_msg_sound") || "chime"; }
 function ringSound(){ return localStorage.getItem("pcc_ring_sound") || "phone"; }
 function ring(){ playPattern(ringSound()); }
 function ding(){ playPattern(msgSound()); }
+function audioAwake(){ return !!(ac && ac.state === "running"); }
+function requestSystemSound(title, body, url){
+  try{
+    var msg = {type:"pcc-notify", title:title, body:body, url:url};
+    var sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+    if(sw){ sw.postMessage(msg); return; }
+    if(navigator.serviceWorker && navigator.serviceWorker.ready){ navigator.serviceWorker.ready.then(function(reg){ if(reg && reg.active){ reg.active.postMessage(msg); } }).catch(function(){}); }
+  }catch(_){}
+}
 function banner(text){ var b = document.getElementById("pcc_alert"); if(!b){ b = document.createElement("div"); b.id = "pcc_alert"; b.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 14px;border-radius:10px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:92%;text-align:center"; b.onclick = function(){ b.remove(); }; document.body.appendChild(b); } b.textContent = text + "  (tap to dismiss)"; }
 function check(){ if(document.visibilityState !== "visible") return; fetch("/api/updates").then(function(r){ return r.json(); }).then(function(d){
 if(lastCheckin === null){ lastCheckin = d.checkin_id; lastUnread = d.unread; d.friends.forEach(function(f){ seen[f.id] = 1; }); return; }
 if(d.checkin_id !== lastCheckin){ lastCheckin = d.checkin_id; seen = {}; d.friends.forEach(function(f){ seen[f.id] = 1; }); lastUnread = d.unread; return; }
-d.friends.forEach(function(f){ if(!seen[f.id]){ seen[f.id] = 1; if(soundsOn()){ ring(); } banner("🔔 " + f.name + " just checked in at " + f.airport + " · " + f.city); } });
-if(d.unread > lastUnread){ if(soundsOn()){ ding(); } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
+d.friends.forEach(function(f){ if(!seen[f.id]){ seen[f.id] = 1; if(soundsOn()){ if(!audioAwake()){ requestSystemSound(f.name + " checked in at " + f.airport + " / " + f.city, f.name + " just checked in at " + f.airport + " / " + f.city + ", where you are checked in too.", "/"); } ring(); } banner("🔔 " + f.name + " just checked in at " + f.airport + " · " + f.city); } });
+if(d.unread > lastUnread){ if(soundsOn()){ if(!audioAwake()){ requestSystemSound("Pilot & Crew Community", "You have a new message. Log in to read it.", d.latest_from_id ? "/messages/" + d.latest_from_id : "/"); } ding(); } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
 lastUnread = d.unread;
 }).catch(function(){}); }
 setInterval(check, 10000);
@@ -2328,12 +2337,13 @@ def api_updates():
     unread = db.execute("SELECT COUNT(*) AS n FROM messages WHERE recipient_id = ? AND is_read = 0",
                         (user["id"],)).fetchone()["n"]
     latest = db.execute(
-        """SELECT u.name FROM messages m JOIN users u ON u.id = m.sender_id
+        """SELECT u.id AS sender_id, u.name FROM messages m JOIN users u ON u.id = m.sender_id
            WHERE m.recipient_id = ? AND m.is_read = 0 ORDER BY m.created_at DESC, m.id DESC LIMIT 1""",
         (user["id"],)).fetchone()
     return jsonify({"checkin_id": checkin["id"] if checkin else None,
                     "friends": friends, "unread": unread,
-                    "latest_from": latest["name"] if latest else None})
+                    "latest_from": latest["name"] if latest else None,
+                    "latest_from_id": latest["sender_id"] if latest else None})
 
 def _slot_checkout_form(slot, label):
     """Small form that checks the user out of one place (hotel or restaurant)."""
@@ -3992,6 +4002,13 @@ self.addEventListener("fetch", (e) => {
       return hit || net;
     })
   );
+});
+self.addEventListener("message", (e) => {
+  const d = e.data || {};
+  if (d.type !== "pcc-notify") return;
+  const title = d.title || "Pilot & Crew Community";
+  const options = { body: d.body || "", tag: "pcc", data: { url: d.url || "/" } };
+  e.waitUntil(self.registration.showNotification(title, options));
 });
 self.addEventListener("push", (e) => {
   let data = {};
