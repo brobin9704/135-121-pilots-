@@ -1284,9 +1284,22 @@ var on = localStorage.getItem("pcc_sounds") !== "off";
 var seen = {}, lastCheckin = null, lastUnread = null, ac = null;
 function audio(){ if(!ac){ try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(ac.state==="suspended"){ ac.resume(); } return ac; }
 document.addEventListener("pointerdown", function(){ audio(); }, {once:true});
-function tone(f, delay, dur){ var ctx = audio(); if(!ctx) return; var o = ctx.createOscillator(), g = ctx.createGain(); o.type = "sine"; o.frequency.value = f; var t = ctx.currentTime + delay; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur + 0.05); }
-function ring(){ tone(880, 0, 0.5); tone(1318.5, 0.18, 0.5); }
-function ding(){ tone(1046.5, 0, 0.3); }
+function tone(f, delay, dur, vol){ var ctx = audio(); if(!ctx) return; var o = ctx.createOscillator(), g = ctx.createGain(); o.type = "sine"; o.frequency.value = f; var t = ctx.currentTime + delay; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur + 0.05); }
+var SOUND_PATTERNS = {
+  ding: [[1046.5, 0, 0.3]],
+  chime: [[880, 0, 0.25], [1318.5, 0.12, 0.25]],
+  beep: [[1200, 0, 0.12], [1200, 0.16, 0.12]],
+  pop: [[660, 0, 0.15]],
+  ring: [[880, 0, 0.5], [1318.5, 0.18, 0.5]],
+  triple: [[523.25, 0, 0.3], [659.25, 0.15, 0.3], [783.99, 0.3, 0.3]],
+  phone: [[880, 0, 0.4], [1174.66, 0.12, 0.4]],
+  soft: [[523.25, 0, 0.6, 0.15], [783.99, 0.25, 0.6, 0.15]]
+};
+function playPattern(key){ var p = SOUND_PATTERNS[key] || SOUND_PATTERNS.ding; p.forEach(function(n){ tone(n[0], n[1], n[2], n[3]); }); }
+function msgSound(){ return localStorage.getItem("pcc_msg_sound") || "chime"; }
+function ringSound(){ return localStorage.getItem("pcc_ring_sound") || "phone"; }
+function ring(){ playPattern(ringSound()); }
+function ding(){ playPattern(msgSound()); }
 function banner(text){ var b = document.getElementById("pcc_alert"); if(!b){ b = document.createElement("div"); b.id = "pcc_alert"; b.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 14px;border-radius:10px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:92%;text-align:center"; b.onclick = function(){ b.remove(); }; document.body.appendChild(b); } b.textContent = text + "  (tap to dismiss)"; }
 function check(){ if(document.visibilityState !== "visible") return; fetch("/api/updates").then(function(r){ return r.json(); }).then(function(d){
 if(lastCheckin === null){ lastCheckin = d.checkin_id; lastUnread = d.unread; d.friends.forEach(function(f){ seen[f.id] = 1; }); return; }
@@ -1300,6 +1313,9 @@ document.addEventListener("visibilitychange", function(){ if(document.visibility
 check();
 var t = document.getElementById("sound_toggle"); if(t){ t.textContent = on ? "🔔" : "🔕"; }
 window.pccToggleSound = function(btn){ on = !on; localStorage.setItem("pcc_sounds", on ? "on" : "off"); btn.textContent = on ? "🔔" : "🔕"; };
+window.pccTestSound = function(which){ var id = which === "msg" ? "msg_sound" : "ring_sound"; var el = document.getElementById(id); playPattern(el ? el.value : (which === "msg" ? msgSound() : ringSound())); };
+var ms = document.getElementById("msg_sound"); if(ms){ ms.value = msgSound(); ms.addEventListener("change", function(){ localStorage.setItem("pcc_msg_sound", ms.value); }); }
+var rs = document.getElementById("ring_sound"); if(rs){ rs.value = ringSound(); rs.addEventListener("change", function(){ localStorage.setItem("pcc_ring_sound", rs.value); }); }
 })();</script>
 """
 
@@ -1988,6 +2004,12 @@ def profile_form(user):
     <label>Aircraft</label><input name="aircraft" value="{esc(user['aircraft'])}">
     <label>Email</label><input type="email" name="email" value="{esc(user['email'])}" required>
     <button type="submit">Save</button></form></div>
+    <div class="card"><h2>Notification sounds</h2>
+    <p class="muted">Saved on this device. Heard while the app is open.</p>
+    <label>Message sound</label><select id="msg_sound"><option value="ding">Ding</option><option value="chime">Chime</option><option value="beep">Double beep</option><option value="pop">Pop</option></select>
+    <button type="button" onclick="pccTestSound('msg')" style="width:auto">Test</button>
+    <label>Check-in sound</label><select id="ring_sound"><option value="ring">Ring</option><option value="triple">Triple chime</option><option value="phone">Phone ring</option><option value="soft">Soft bell</option></select>
+    <button type="button" onclick="pccTestSound('ring')" style="width:auto">Test</button></div>
     <div class="card"><h2>Change password</h2>
     <form method="post"><input type="hidden" name="form" value="password">
     <label>Current password</label><input type="password" name="current_password" required autocomplete="current-password">
