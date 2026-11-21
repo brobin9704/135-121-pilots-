@@ -1279,8 +1279,18 @@ def page(title, user, body, flash=None, error=None):
                 (user["id"],)).fetchone()["n"]
         except Exception:
             _unread = 0
+        try:
+            _pending = get_db().execute(
+                "SELECT COUNT(*) AS n FROM friend_requests WHERE to_user_id = ?",
+                (user["id"],)).fetchone()["n"]
+        except Exception:
+            _pending = 0
         def _label(t, e):
-            badge = f' <span class="msgdot">{_unread}</span>' if t == "Messages" and _unread else ""
+            badge = ""
+            if t == "Messages" and _unread:
+                badge = f' <span class="msgdot">{_unread}</span>'
+            elif t == "Friends" and _pending:
+                badge = f' <span class="msgdot">{_pending}</span>'
             return f'<span class="e">{e}</span>{t}{badge}'
         bnav = "".join(
             f'<a href="{u}" class="{"on" if (t == title or (t == "Profile" and title == "My Profile")) else ""}">'
