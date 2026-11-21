@@ -70,6 +70,12 @@ OVERPASS_URLS = [
 # Shared pool for racing Overpass against the Nominatim fallback. Module-level
 # so request threads are reused instead of spawned (and joined) per search.
 _SEARCH_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=6, thread_name_prefix="osm")
+# Yelp's page fetches get their own pool: the split search submits many
+# pages at once, and on the shared pool they queue behind the slow
+# Overpass/Nominatim work and miss the 8s wait (live 2026-11-21: the
+# Yelp card count flickered 328 -> 149 between identical runs). I/O-bound,
+# so 8 workers is fine.
+_YELP_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="yelp")
 
 HOTEL_TAGS = [
     "quiet rooms", "blackout curtains", "crew shuttle", "crew rate",
@@ -899,21 +905,22 @@ def yelp_search(lat, lon, radius_miles, kind):
     pages = min((total + 49) // 50, _YELP_MAX_PAGES)
     futs = []
     if pages > 1:
-        futs += [_SEARCH_POOL.submit(_yelp_page, key,
-                                     urllib.parse.urlencode(dict(base, offset=50 * i)))
+        futs += [_YELP_POOL.submit(_yelp_page, key,
+                                   urllib.parse.urlencode(dict(base, offset=50 * i)))
                  for i in range(1, pages)]
     if radius_miles > 2:
         # Sub-area queries, all in parallel with the wide pages above so
         # the total wait stays bounded by the single 8s wait below. Each
-        # sub-query takes its two nearest pages (100 nearest to its
-        # centre); results are parsed against the MAIN centre and radius
-        # so only places inside the big circle come back.
+        # sub-query takes its three nearest pages (150 nearest to its
+        # centre — the ring centres sit in dense areas, so two pages can
+        # miss a place 0.8 mi out); results are parsed against the MAIN
+        # centre and radius so only places inside the big circle come back.
         for clat, clon in _yelp_subcentres(lat, lon, radius_miles):
             sub_base = {"latitude": clat, "longitude": clon,
                         "radius": int(2 * 1609.34),
                         "categories": cats, "limit": 50, "sort_by": "distance"}
-            for off in (0, 50):
-                futs.append(_SEARCH_POOL.submit(
+            for off in (0, 50, 100):
+                futs.append(_YELP_POOL.submit(
                     _yelp_page, key,
                     urllib.parse.urlencode(dict(sub_base, offset=off))))
     if futs:
