@@ -17,6 +17,8 @@ import io
 import json
 import os
 import sqlite3
+import threading
+import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timezone
@@ -73,11 +75,13 @@ _SEARCH_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=6, thread_name_
 # Yelp's page fetches get their own pool: the split search submits many
 # pages at once, and on the shared pool they queue behind the slow
 # Overpass/Nominatim work and miss the 8s wait (live 2026-11-21: the
-# Yelp card count flickered 328 -> 149 between identical runs). Kept
-# small (5 workers): Yelp throttles bursts, and the pre-split code was
-# stable with only ~4 Yelp calls in flight at once, so the split search
-# spreads its ~19 calls over 5 workers instead of firing them all at once.
+# Yelp card count flickered 328 -> 149 between identical runs).
 _YELP_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=5, thread_name_prefix="yelp")
+# Yelp 429s bursts: live 2026-11-21 a 21-call burst got 17x 429 (plus 2x
+# 400 on the highest wide-query offsets). _yelp_page spaces request
+# starts >=0.4s apart via this lock so a search stays under Yelp's limit.
+_YELP_LOCK = threading.Lock()
+_YELP_LAST_CALL = [0.0]
 
 HOTEL_TAGS = [
     "quiet rooms", "blackout curtains", "crew shuttle", "crew rate",
@@ -796,23 +800,22 @@ _YELP_MAX_PAGES = 20  # 20 x 50 = 1000 businesses, Yelp's own max; bounds API ca
 
 
 def _yelp_page(key, params):
-    """One Yelp Fusion business-search page; None on any failure."""
+    """One Yelp Fusion business-search page; None on any failure.
+    Request starts are spaced >=0.4s apart (see _YELP_LOCK): Yelp 429s
+    bursts, so the split search's parallel pages must not all fire at
+    once."""
+    with _YELP_LOCK:
+        wait = 0.4 - (time.time() - _YELP_LAST_CALL[0])
+        if wait > 0:
+            time.sleep(wait)
+        _YELP_LAST_CALL[0] = time.time()
     try:
         req = urllib.request.Request(
             f"https://api.yelp.com/v3/businesses/search?{params}",
             headers={"Authorization": f"Bearer {key}", "User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode("utf-8"))
-    except Exception as e:
-        # Temporary diagnostic (2026-11-21): the split-search sub-query
-        # pages are not landing live. Log the failure so Render's logs
-        # show whether Yelp is throttling (429), timing out, or failing
-        # some other way. Remove once the cause is found.
-        try:
-            print(f"YELPDBG page fail: {type(e).__name__} {getattr(e, 'code', '')} "
-                  f"{str(e)[:120]} | {params[:80]}", flush=True)
-        except Exception:
-            pass
+    except Exception:
         return None
 
 
@@ -886,12 +889,14 @@ def yelp_search(lat, lon, radius_miles, kind):
     the OSM search. Yelp only lists businesses with reviews, so it can't
     catch a brand-new place with none; that's what Overpass is for.
     Key comes from the YELP_API_KEY env var (Render dashboard).
-    Yelp caps one call at 50 businesses, so the search pages through with
-    offset (page 0 first, then the rest in parallel, up to _YELP_MAX_PAGES)
-    — otherwise the farthest places in a wide radius get cut off.
     A wide radius also drops places outright (even the nearest ones), so
     the search is split into 2-mile sub-area queries around the centre
     and rings around it; their results are merged and deduped below.
+    The wide query is NOT paged and each sub-query takes only its
+    nearest page: Yelp 429s bursts (live 2026-11-21, 17 of 21 parallel
+    pages got 429 and the highest wide-query offsets got 400), so a
+    search makes at most 8 Yelp calls (wide page 0 + 7 sub-query pages)
+    and _yelp_page spaces them >=0.4s apart.
     """
     key = os.environ.get("YELP_API_KEY")
     # Restaurants on Yelp means the "restaurants" parent only — coffee
@@ -909,43 +914,24 @@ def yelp_search(lat, lon, radius_miles, kind):
     if first is None:
         return []
     out = _yelp_parse(first, lat, lon, radius_miles, kind)
-    try:
-        total = int(first.get("total") or 0)
-    except (TypeError, ValueError):
-        total = 0
-    pages = min((total + 49) // 50, _YELP_MAX_PAGES)
     futs = []
-    if pages > 1:
-        futs += [_YELP_POOL.submit(_yelp_page, key,
-                                   urllib.parse.urlencode(dict(base, offset=50 * i)))
-                 for i in range(1, pages)]
     if radius_miles > 2:
-        # Sub-area queries, all in parallel with the wide pages above so
-        # the total wait stays bounded by the single 8s wait below. Each
-        # sub-query takes its two nearest pages (100 nearest to its
-        # centre — measured live, the known missing places sit inside
-        # the nearest 60 of their ring centre, and a third page made the
-        # whole search flicker between runs); results are parsed against
-        # the MAIN centre and radius so only places inside the big
-        # circle come back.
+        # Sub-area queries, nearest page only, all in parallel with each
+        # other so the total wait stays bounded by the single 8s wait
+        # below. Results are parsed against the MAIN centre and radius so
+        # only places inside the big circle come back. Measured live, the
+        # known missing places sit inside the nearest ~60 of their ring
+        # centre; page 0 (nearest 50) catches all but the farthest of
+        # them, and the rest come back from Overpass when it answers.
         for clat, clon in _yelp_subcentres(lat, lon, radius_miles):
             sub_base = {"latitude": clat, "longitude": clon,
                         "radius": int(2 * 1609.34),
                         "categories": cats, "limit": 50, "sort_by": "distance"}
-            for off in (0, 50):
-                futs.append(_YELP_POOL.submit(
-                    _yelp_page, key,
-                    urllib.parse.urlencode(dict(sub_base, offset=off))))
+            futs.append(_YELP_POOL.submit(
+                _yelp_page, key,
+                urllib.parse.urlencode(dict(sub_base, offset=0))))
     if futs:
         done, _ = concurrent.futures.wait(futs, timeout=8)
-        # Temporary diagnostic (2026-11-21): how many of the parallel
-        # Yelp pages landed, and how many of the returned places came from
-        # the sub-area queries. Remove once the cause is found.
-        try:
-            print(f"YELPDBG search: submitted={len(futs)} done={len(done)} "
-                  f"wide_total={total} radius={radius_miles}", flush=True)
-        except Exception:
-            pass
         for f in done:
             try:
                 page = f.result(timeout=0)
