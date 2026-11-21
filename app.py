@@ -784,7 +784,7 @@ def _merge_place_results(*sources):
     return sorted(merged.values(), key=lambda x: x.get("distance", 999))
 
 
-_YELP_MAX_PAGES = 8  # 8 x 50 = 400 businesses per search; bounds API calls
+_YELP_MAX_PAGES = 20  # 20 x 50 = 1000 businesses, Yelp's own max; bounds API calls
 
 
 def _yelp_page(key, params):
