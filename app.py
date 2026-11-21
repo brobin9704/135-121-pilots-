@@ -892,11 +892,14 @@ def yelp_search(lat, lon, radius_miles, kind):
     A wide radius also drops places outright (even the nearest ones), so
     the search is split into 2-mile sub-area queries around the centre
     and rings around it; their results are merged and deduped below.
-    The wide query is NOT paged and each sub-query takes only its
+    The wide query is NOT paged and the centre sub-query takes only its
     nearest page: Yelp 429s bursts (live 2026-11-21, 17 of 21 parallel
     pages got 429 and the highest wide-query offsets got 400), so a
-    search makes at most 8 Yelp calls (wide page 0 + 7 sub-query pages)
-    and _yelp_page spaces them >=0.4s apart.
+    search makes at most 14 Yelp calls (wide page 0 + centre page 0 +
+    6 ring sub-queries x 2 pages) and _yelp_page spaces them >=0.4s
+    apart. The ring sub-queries take two pages because a far place can
+    sit past the nearest 50 of its ring centre (live: MOD Tanasbourne
+    is past 50 in its ring's page 0, Chick-fil-A past 60).
     """
     key = os.environ.get("YELP_API_KEY")
     # Restaurants on Yelp means the "restaurants" parent only — coffee
@@ -916,20 +919,21 @@ def yelp_search(lat, lon, radius_miles, kind):
     out = _yelp_parse(first, lat, lon, radius_miles, kind)
     futs = []
     if radius_miles > 2:
-        # Sub-area queries, nearest page only, all in parallel with each
-        # other so the total wait stays bounded by the single 8s wait
-        # below. Results are parsed against the MAIN centre and radius so
-        # only places inside the big circle come back. Measured live, the
-        # known missing places sit inside the nearest ~60 of their ring
-        # centre; page 0 (nearest 50) catches all but the farthest of
-        # them, and the rest come back from Overpass when it answers.
-        for clat, clon in _yelp_subcentres(lat, lon, radius_miles):
+        # Sub-area queries, all in parallel with each other so the total
+        # wait stays bounded by the single 8s wait below. Results are
+        # parsed against the MAIN centre and radius so only places inside
+        # the big circle come back. The centre takes its nearest page
+        # only (the near places it recovers sit in the top few); each
+        # ring takes two pages, because a far place can sit past the
+        # nearest 50 of its ring centre.
+        for idx, (clat, clon) in enumerate(_yelp_subcentres(lat, lon, radius_miles)):
             sub_base = {"latitude": clat, "longitude": clon,
                         "radius": int(2 * 1609.34),
                         "categories": cats, "limit": 50, "sort_by": "distance"}
-            futs.append(_YELP_POOL.submit(
-                _yelp_page, key,
-                urllib.parse.urlencode(dict(sub_base, offset=0))))
+            for off in ((0,) if idx == 0 else (0, 50)):
+                futs.append(_YELP_POOL.submit(
+                    _yelp_page, key,
+                    urllib.parse.urlencode(dict(sub_base, offset=off))))
     if futs:
         done, _ = concurrent.futures.wait(futs, timeout=8)
         for f in done:
