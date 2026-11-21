@@ -3735,10 +3735,11 @@ def friends():
         else:
             nearby = ' — no active check-in'
         _search = esc(((fr["name"] or "").split() or [""])[0])
+        _name_js = (fr["name"] or "").replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ").replace("\r", " ")
         items += (f"<li data-search=\"{_search}\">{_avatar_html(fr['id'])}{esc(fr['name'])} ({esc(fr['role'] or 'pilot').title()} · {esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
                   f' <form method="post" style="display:inline;margin-left:8px">'
                   f'<input type="hidden" name="remove_id" value="{fr["id"]}">'
-                  f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px">Remove</button>'
+                  f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px" onclick="return confirm(\'Remove {_name_js} from your friends?\')">Remove</button>'
                   f"</form></li>")
     others = db.execute(
         "SELECT * FROM users WHERE id != ? AND id NOT IN (SELECT friend_id FROM friends WHERE user_id = ?)",
