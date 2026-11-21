@@ -831,6 +831,34 @@ def _yelp_parse(data, lat, lon, radius_miles, kind):
     return out
 
 
+def _yelp_subcentres(lat, lon, radius_miles):
+    """Centres for the sub-area Yelp queries. Yelp drops places — even the
+    nearest ones — when the search radius is wide (The Bistro, 0.03 mi
+    away, comes back for a 2-mile radius but not for 3+), so a wide search
+    is split into 2-mile circles: the centre plus rings of points around
+    it, each queried at 2 miles. Returns [(lat, lon), ...]; just the
+    centre when the radius is already 2 miles or less. Capped at 13
+    centres so the number of Yelp calls stays bounded."""
+    if radius_miles <= 2:
+        return [(lat, lon)]
+    centres = [(lat, lon)]
+    lat_deg = 1.0 / 69.0
+    lon_deg = 1.0 / (69.0 * max(0.2, math.cos(math.radians(lat))))
+    d = 3.0
+    ring = 0
+    while d <= radius_miles - 2 and len(centres) < 13:
+        off = 30.0 if (ring % 2) else 0.0
+        for k in range(6):
+            if len(centres) >= 13:
+                break
+            ang = math.radians(off + 60.0 * k)
+            centres.append((lat + d * math.sin(ang) * lat_deg,
+                            lon + d * math.cos(ang) * lon_deg))
+        ring += 1
+        d += 3.0
+    return centres
+
+
 def yelp_search(lat, lon, radius_miles, kind):
     """Independent third source: Yelp Fusion business search.
 
@@ -844,6 +872,9 @@ def yelp_search(lat, lon, radius_miles, kind):
     Yelp caps one call at 50 businesses, so the search pages through with
     offset (page 0 first, then the rest in parallel, up to _YELP_MAX_PAGES)
     — otherwise the farthest places in a wide radius get cut off.
+    A wide radius also drops places outright (even the nearest ones), so
+    the search is split into 2-mile sub-area queries around the centre
+    and rings around it; their results are merged and deduped below.
     """
     key = os.environ.get("YELP_API_KEY")
     # Restaurants on Yelp means the "restaurants" parent only — coffee
@@ -866,10 +897,26 @@ def yelp_search(lat, lon, radius_miles, kind):
     except (TypeError, ValueError):
         total = 0
     pages = min((total + 49) // 50, _YELP_MAX_PAGES)
+    futs = []
     if pages > 1:
-        futs = [_SEARCH_POOL.submit(_yelp_page, key,
+        futs += [_SEARCH_POOL.submit(_yelp_page, key,
                                      urllib.parse.urlencode(dict(base, offset=50 * i)))
-                for i in range(1, pages)]
+                 for i in range(1, pages)]
+    if radius_miles > 2:
+        # Sub-area queries, all in parallel with the wide pages above so
+        # the total wait stays bounded by the single 8s wait below. Each
+        # sub-query takes its two nearest pages (100 nearest to its
+        # centre); results are parsed against the MAIN centre and radius
+        # so only places inside the big circle come back.
+        for clat, clon in _yelp_subcentres(lat, lon, radius_miles):
+            sub_base = {"latitude": clat, "longitude": clon,
+                        "radius": int(2 * 1609.34),
+                        "categories": cats, "limit": 50, "sort_by": "distance"}
+            for off in (0, 50):
+                futs.append(_SEARCH_POOL.submit(
+                    _yelp_page, key,
+                    urllib.parse.urlencode(dict(sub_base, offset=off))))
+    if futs:
         done, _ = concurrent.futures.wait(futs, timeout=8)
         for f in done:
             try:
@@ -880,8 +927,15 @@ def yelp_search(lat, lon, radius_miles, kind):
                 out.extend(_yelp_parse(page, lat, lon, radius_miles, kind))
         for f in futs:
             f.cancel()
-    out.sort(key=lambda x: x["distance"])
-    return out
+    # Dedupe: a place can come back from the wide query and a sub-query.
+    seen = {}
+    for r in out:
+        try:
+            k = (r["name"].lower(), round(float(r["lat"]), 4), round(float(r["lon"]), 4))
+        except (KeyError, TypeError, ValueError):
+            continue
+        seen.setdefault(k, r)
+    return sorted(seen.values(), key=lambda x: x["distance"])
 
 
 def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", tail_timeout=30):
