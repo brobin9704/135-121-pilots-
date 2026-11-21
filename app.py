@@ -998,9 +998,9 @@ nav a.active{background:#0369a1}
 .you-pin-shape{position:relative;width:24px;height:24px;background:#ef4444;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .you-pin-shape:after{content:"";position:absolute;left:6px;top:6px;width:8px;height:8px;background:#fff;border-radius:50%}
 .logout_link{margin-left:auto;color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:8px 14px;min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
-.has_bnav .wrap{padding-bottom:96px}
+.has_bnav .wrap{padding-bottom:160px}
 .bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1626;border-top:1px solid #334155;padding:8px 4px calc(10px + env(safe-area-inset-bottom))}
-.bnav a{flex:1;text-align:center;color:#8fa0b8;text-decoration:none;font-size:10px;min-height:48px;display:flex;flex-direction:column;justify-content:center;align-items:center}
+.bnav a{flex:1;text-align:center;color:#8fa0b8;text-decoration:none;font-size:10px;min-height:48px;display:flex;flex-direction:column;justify-content:center;align-items:center;white-space:nowrap}
 .bnav a .e{display:block;font-size:20px}
 .bnav a.on{color:#38bdf8;font-weight:700}
 .msgdot{display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:999px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:middle}
