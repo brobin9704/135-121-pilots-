@@ -766,34 +766,94 @@ def _parse_overpass_elements(elements, clat, clon, radius_miles):
     return results
 
 
-def _merge_place_results(primary, secondary):
-    """Crosscheck merge: union of two sources, deduped by name + location.
+def _merge_place_results(*sources):
+    """Crosscheck merge: union of sources, deduped by name + location.
 
-    The primary (Overpass) entry wins on a duplicate; the secondary only
-    adds places the primary missed. Sorted nearest first. A third source
-    (e.g. Yelp) plugs in the same way: merge its results as the secondary
-    against the running union.
+    Earlier sources win on a duplicate; later ones only add places the
+    earlier ones missed. Sorted nearest first. Priority is Overpass, then
+    Nominatim, then Yelp.
     """
     merged = {}
-    for r in (primary or []) + (secondary or []):
-        try:
-            key = ((r.get("name") or "").lower(), round(float(r["lat"]), 4), round(float(r["lon"]), 4))
-        except (KeyError, TypeError, ValueError):
-            continue
-        merged.setdefault(key, r)
+    for src in sources:
+        for r in (src or []):
+            try:
+                key = ((r.get("name") or "").lower(), round(float(r["lat"]), 4), round(float(r["lon"]), 4))
+            except (KeyError, TypeError, ValueError):
+                continue
+            merged.setdefault(key, r)
     return sorted(merged.values(), key=lambda x: x.get("distance", 999))
 
 
-def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", tail_timeout=30):
-    """Real OpenStreetMap results around a coordinate pair.
+def yelp_search(lat, lon, radius_miles, kind):
+    """Independent third source: Yelp Fusion business search.
 
-    Crosscheck: Overpass and the Nominatim fallback run in parallel and
-    their results are MERGED (deduped by name + location), so a place
-    either source has shows up. Overpass is the complete source (every
-    place in the radius); Nominatim is capped and importance-ranked, but
-    it can catch places Overpass missed when a mirror is stale or down.
+    Yelp keeps its own business database, so it can catch places missing
+    from OpenStreetMap entirely. Returns standard result dicts, nearest
+    first, or [] when the key is unset, the request fails, or the kind has
+    no Yelp category (FBOs). Never raises — a dead Yelp must never break
+    the OSM search. Yelp only lists businesses with reviews, so it can't
+    catch a brand-new place with none; that's what Overpass is for.
+    Key comes from the YELP_API_KEY env var (Render dashboard).
+    """
+    key = os.environ.get("YELP_API_KEY")
+    cats = {"restaurant": "restaurants", "hotel": "hotels",
+            "attraction": "arts,active,tours"}.get(kind)
+    if not key or not cats:
+        return []
+    params = urllib.parse.urlencode({
+        "latitude": lat, "longitude": lon,
+        "radius": min(int(radius_miles * 1609.34), 40000),
+        "categories": cats, "limit": 50, "sort_by": "distance",
+    })
+    try:
+        req = urllib.request.Request(
+            f"https://api.yelp.com/v3/businesses/search?{params}",
+            headers={"Authorization": f"Bearer {key}", "User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return []
+    out = []
+    for b in data.get("businesses", []) or []:
+        try:
+            coords = b.get("coordinates") or {}
+            blat, blon = float(coords["latitude"]), float(coords["longitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        dist = haversine_miles(lat, lon, blat, blon)
+        if dist > radius_miles + 0.05:
+            continue
+        loc = b.get("location") or {}
+        address = _short_address(loc.get("address1"), loc.get("city"),
+                                 _state_code(loc.get("state")))
+        out.append({
+            "name": b.get("name") or address.split(",")[0], "brand": "",
+            "lat": blat, "lon": blon,
+            "address": address,
+            "phone": b.get("display_phone") or b.get("phone") or "",
+            # The API has no business-website field; the Yelp page is the link.
+            "website": b.get("url") or "",
+            "cuisine": ", ".join(c.get("title", "") for c in (b.get("categories") or []) if c.get("title")),
+            "hours": "",
+            "atype": kind,
+            "distance": round(dist, 1),
+            "rating": b.get("rating"), "review_count": b.get("review_count"),
+        })
+    out.sort(key=lambda x: x["distance"])
+    return out
+
+
+def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", tail_timeout=30):
+    """Real results around a coordinate pair, crosschecked across sources.
+
+    Overpass, the Nominatim fallback and Yelp run in parallel and their
+    results are MERGED (deduped by name + location, Overpass copy wins),
+    so a place any source has shows up. Overpass is the complete source
+    (every place in the radius); Nominatim is capped and importance-ranked
+    but shares OSM's data; Yelp keeps its own database, so it can catch
+    places missing from OSM entirely (FBOs have no Yelp category).
     The wait stays bounded: 6s for the first source to land, then a 3s
-    grace for the other before returning what has landed. A slow source
+    grace for the others before returning what has landed. A slow source
     never blocks the results already in hand.
     tail_timeout bounds the wait for a slow source (FBOs use a short one —
     the Nominatim fallback can't find FBOs, so a long wait is pure delay).
@@ -817,6 +877,8 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", t
 
     over_fut = _SEARCH_POOL.submit(_overpass_results)
     nom_fut = _SEARCH_POOL.submit(nominatim_fallback, lat, lon, radius_miles, kind, city_hint)
+    yelp_fut = _SEARCH_POOL.submit(yelp_search, lat, lon, radius_miles, kind)
+    futs = [over_fut, nom_fut, yelp_fut]
 
     def _collect(fut, timeout):
         try:
@@ -825,29 +887,32 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", t
             return []
 
     try:
-        done, _ = concurrent.futures.wait([over_fut, nom_fut], timeout=6,
-                                          return_when=concurrent.futures.FIRST_COMPLETED)
-        if not done:
-            # Nothing landed in 6s: wait for the first usable results, then
-            # give the other source a short grace to add its own places.
-            try:
-                for fut in concurrent.futures.as_completed([over_fut, nom_fut], timeout=tail_timeout):
-                    first = _collect(fut, 0)
-                    if first:
-                        other = nom_fut if fut is over_fut else over_fut
-                        return centre, _merge_place_results(first, _collect(other, 3)), None
-            except concurrent.futures.TimeoutError:
-                pass  # slow source; fall through to the busy message
+        concurrent.futures.wait(futs, timeout=6,
+                                return_when=concurrent.futures.FIRST_COMPLETED)
+        landed = [_collect(f, 0) for f in futs]
+        if any(landed):
+            # At least one source landed with results: give the others a 3s
+            # grace, then merge in priority order (Overpass, Nominatim,
+            # Yelp) regardless of who finished first.
+            results = [r if r else _collect(f, 3) for f, r in zip(futs, landed)]
+            merged = _merge_place_results(*results)
+            if merged:
+                return centre, merged, None
             return centre, [], "Listing service is busy — try again in a moment."
-        # At least one source landed: give the other a 3s grace, then merge.
-        over_results = _collect(over_fut, 0) if over_fut in done else _collect(over_fut, 3)
-        nom_results = _collect(nom_fut, 0) if nom_fut in done else _collect(nom_fut, 3)
-        merged = _merge_place_results(over_results, nom_results)
-        if merged:
-            return centre, merged, None
+        # Nothing usable landed in 6s (a source can finish instantly with
+        # no results, e.g. Yelp with no key set): wait for the first usable
+        # results, then give the other sources a short grace.
+        try:
+            for fut in concurrent.futures.as_completed(futs, timeout=tail_timeout):
+                first = _collect(fut, 0)
+                if first:
+                    results = [first if f is fut else _collect(f, 3) for f in futs]
+                    return centre, _merge_place_results(*results), None
+        except concurrent.futures.TimeoutError:
+            pass  # slow source; fall through to the busy message
         return centre, [], "Listing service is busy — try again in a moment."
     finally:
-        for fut in (over_fut, nom_fut):
+        for fut in futs:
             fut.cancel()
 
 
