@@ -73,9 +73,11 @@ _SEARCH_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=6, thread_name_
 # Yelp's page fetches get their own pool: the split search submits many
 # pages at once, and on the shared pool they queue behind the slow
 # Overpass/Nominatim work and miss the 8s wait (live 2026-11-21: the
-# Yelp card count flickered 328 -> 149 between identical runs). I/O-bound,
-# so 8 workers is fine.
-_YELP_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="yelp")
+# Yelp card count flickered 328 -> 149 between identical runs). Kept
+# small (5 workers): Yelp throttles bursts, and the pre-split code was
+# stable with only ~4 Yelp calls in flight at once, so the split search
+# spreads its ~19 calls over 5 workers instead of firing them all at once.
+_YELP_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=5, thread_name_prefix="yelp")
 
 HOTEL_TAGS = [
     "quiet rooms", "blackout curtains", "crew shuttle", "crew rate",
