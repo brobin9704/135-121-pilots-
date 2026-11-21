@@ -994,6 +994,9 @@ nav a.active{background:#0369a1}
 .appname{text-align:center;font-size:11px;letter-spacing:2px;color:#7dd3fc;font-weight:700;padding:calc(10px + env(safe-area-inset-top)) 4px 0}
 .minimap{height:180px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
 .resultsmap{height:260px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
+.you-pin-wrap{background:none;border:none}
+.you-pin-shape{position:relative;width:24px;height:24px;background:#ef4444;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45)}
+.you-pin-shape:after{content:"";position:absolute;left:6px;top:6px;width:8px;height:8px;background:#fff;border-radius:50%}
 .logout_link{margin-left:auto;color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:8px 14px;min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
 .has_bnav .wrap{padding-bottom:96px}
 .bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1626;border-top:1px solid #334155;padding:8px 4px calc(10px + env(safe-area-inset-bottom))}
@@ -1286,6 +1289,7 @@ def page(title, user, body, flash=None, error=None):
                  f'{MINIMAP_JS}'
                  '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}</script>'
                  f'{SOUND_JS}'
+                 f'{RESULT_SEARCH_JS}'
                  f'{AVATAR_JS}')
     pwa_head = ('<link rel="manifest" href="/manifest.json">'
                 '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
@@ -1410,7 +1414,11 @@ MINIMAP_JS = """
       var bounds=[];
       markers.forEach(function(p){
         if(!isFinite(p.lat)||!isFinite(p.lon))return;
-        L.marker([p.lat,p.lon]).addTo(m).bindPopup(escHtml(p.name));
+        if(p.you){
+          L.marker([p.lat,p.lon],{icon:L.divIcon({className:"you-pin-wrap",html:'<div class="you-pin-shape"></div>',iconSize:[28,28],iconAnchor:[14,28]})}).addTo(m).bindPopup("You are here");
+        }else{
+          L.marker([p.lat,p.lon]).addTo(m).bindPopup(escHtml(p.name));
+        }
         bounds.push([p.lat,p.lon]);
       });
       if(bounds.length>1)m.fitBounds(bounds,{padding:[24,24]});
@@ -1421,6 +1429,33 @@ MINIMAP_JS = """
   if(window.L&&window.L.map){init();return;}
   var l=document.createElement('link');l.rel='stylesheet';l.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(l);
   var s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';s.onload=init;document.head.appendChild(s);
+})();
+</script>
+"""
+
+RESULT_SEARCH_JS = """
+<script>
+(function(){
+  var box = document.getElementById("result_search");
+  if(!box) return;
+  var list = document.getElementById("result_list");
+  var cards = list ? list.querySelectorAll(".result-card") : [];
+  var count = document.getElementById("result_count");
+  var none = document.getElementById("result_none");
+  function run(){
+    var q = box.value.trim().toLowerCase();
+    var shown = 0;
+    for(var i = 0; i < cards.length; i++){
+      var name = cards[i].getAttribute("data-name") || "";
+      var hit = !q || name.indexOf(q) !== -1;
+      cards[i].style.display = hit ? "" : "none";
+      if(hit) shown++;
+    }
+    if(count) count.textContent = q ? ("Showing " + shown + " of " + cards.length + " places") : (cards.length + " places");
+    if(none) none.style.display = shown === 0 ? "" : "none";
+  }
+  box.addEventListener("input", run);
+  run();
 })();
 </script>
 """
@@ -3386,10 +3421,18 @@ def external_results_html(kind, data, user, with_map=True):
         header = f"<h2>{len(results)} {kind_label}s within {radius} mi</h2>"
     if not results:
         return header + '<p class="muted">No places found in that radius.</p>'
-    markers = [ {"lat": r["lat"], "lon": r["lon"], "name": r["name"]} for r in results
+    markers = []
+    if centre:
+        markers.append({"lat": lat, "lon": lon, "name": "You are here", "you": True})
+    markers += [{"lat": r["lat"], "lon": r["lon"], "name": r["name"]} for r in results
                if r.get("lat") is not None and r.get("lon") is not None]
     map_html = (f'<div class="resultsmap" data-markers="{esc(json.dumps(markers))}"></div>'
                 if markers and with_map else "")
+    search_html = ('<div style="margin:12px 0 4px"><input type="search" id="result_search" '
+                   'placeholder="Search by name" autocomplete="off" '
+                   'style="width:100%;font-size:16px;padding:10px"></div>'
+                   '<p class="muted" id="result_count" style="margin:4px 0"></p>'
+                   '<p class="muted" id="result_none" style="display:none">No places match.</p>')
     cards = ""
     for r in results:
         detail = ""
@@ -3434,11 +3477,11 @@ def external_results_html(kind, data, user, with_map=True):
                 {"query": f"{r['name']}, {place['city']}"}))
             name_html = (f'<a href="{loc_url}" target="_blank" rel="noopener">'
                          f'<strong>{esc(r["name"])}</strong></a>')
-        cards += f"""<div class="card">{name_html} <span class="muted">{r['distance']} mi</span>
+        cards += f"""<div class="card result-card" data-name="{esc(r['name'].lower())}">{name_html} <span class="muted">{r['distance']} mi</span>
           {f'<div><img src="{esc(r["logo"])}" alt="{esc(r["name"])} logo" style="max-width:200px;max-height:60px;margin:8px 0"></div>' if r.get("logo") else ""}
           {detail}{addr}{phone}{web}
           {action_html}</div>"""
-    return header + map_html + cards
+    return header + map_html + search_html + '<div id="result_list">' + cards + '</div>'
 
 @app.route("/attractions", methods=["GET", "POST"])
 @login_required
