@@ -803,7 +803,16 @@ def _yelp_page(key, params):
             headers={"Authorization": f"Bearer {key}", "User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode("utf-8"))
-    except Exception:
+    except Exception as e:
+        # Temporary diagnostic (2026-11-21): the split-search sub-query
+        # pages are not landing live. Log the failure so Render's logs
+        # show whether Yelp is throttling (429), timing out, or failing
+        # some other way. Remove once the cause is found.
+        try:
+            print(f"YELPDBG page fail: {type(e).__name__} {getattr(e, 'code', '')} "
+                  f"{str(e)[:120]} | {params[:80]}", flush=True)
+        except Exception:
+            pass
         return None
 
 
@@ -929,6 +938,14 @@ def yelp_search(lat, lon, radius_miles, kind):
                     urllib.parse.urlencode(dict(sub_base, offset=off))))
     if futs:
         done, _ = concurrent.futures.wait(futs, timeout=8)
+        # Temporary diagnostic (2026-11-21): how many of the parallel
+        # Yelp pages landed, and how many of the returned places came from
+        # the sub-area queries. Remove once the cause is found.
+        try:
+            print(f"YELPDBG search: submitted={len(futs)} done={len(done)} "
+                  f"wide_total={total} radius={radius_miles}", flush=True)
+        except Exception:
+            pass
         for f in done:
             try:
                 page = f.result(timeout=0)
