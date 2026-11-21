@@ -766,14 +766,35 @@ def _parse_overpass_elements(elements, clat, clon, radius_miles):
     return results
 
 
+def _merge_place_results(primary, secondary):
+    """Crosscheck merge: union of two sources, deduped by name + location.
+
+    The primary (Overpass) entry wins on a duplicate; the secondary only
+    adds places the primary missed. Sorted nearest first. A third source
+    (e.g. Yelp) plugs in the same way: merge its results as the secondary
+    against the running union.
+    """
+    merged = {}
+    for r in (primary or []) + (secondary or []):
+        try:
+            key = ((r.get("name") or "").lower(), round(float(r["lat"]), 4), round(float(r["lon"]), 4))
+        except (KeyError, TypeError, ValueError):
+            continue
+        merged.setdefault(key, r)
+    return sorted(merged.values(), key=lambda x: x.get("distance", 999))
+
+
 def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", tail_timeout=30):
     """Real OpenStreetMap results around a coordinate pair.
 
-    Overpass and the Nominatim fallback run in parallel on a shared pool.
-    If the fallback finishes first, Overpass gets a short grace to land,
-    since its results are complete (every place in the radius); otherwise
-    the first usable results win. A slow Overpass no longer blocks the
-    fallback, and returning never waits for a straggler thread.
+    Crosscheck: Overpass and the Nominatim fallback run in parallel and
+    their results are MERGED (deduped by name + location), so a place
+    either source has shows up. Overpass is the complete source (every
+    place in the radius); Nominatim is capped and importance-ranked, but
+    it can catch places Overpass missed when a mirror is stale or down.
+    The wait stays bounded: 6s for the first source to land, then a 3s
+    grace for the other before returning what has landed. A slow source
+    never blocks the results already in hand.
     tail_timeout bounds the wait for a slow source (FBOs use a short one —
     the Nominatim fallback can't find FBOs, so a long wait is pure delay).
     """
@@ -796,52 +817,38 @@ def places_at_coords(lat, lon, radius_miles, kind, display=None, city_hint="", t
 
     over_fut = _SEARCH_POOL.submit(_overpass_results)
     nom_fut = _SEARCH_POOL.submit(nominatim_fallback, lat, lon, radius_miles, kind, city_hint)
+
+    def _collect(fut, timeout):
+        try:
+            return fut.result(timeout=timeout) or []
+        except Exception:
+            return []
+
     try:
-        # First usable results win, with one exception: Overpass is the
-        # complete source (every place in the radius), while the Nominatim
-        # fallback is capped and importance-ranked. If the fallback finishes
-        # first, Overpass gets a short grace to land before we settle for it.
         done, _ = concurrent.futures.wait([over_fut, nom_fut], timeout=6,
                                           return_when=concurrent.futures.FIRST_COMPLETED)
-        held = None
-        for fut in done:
+        if not done:
+            # Nothing landed in 6s: wait for the first usable results, then
+            # give the other source a short grace to add its own places.
             try:
-                results = fut.result()
-            except Exception:
-                results = []
-            if results:
-                if fut is over_fut:
-                    nom_fut.cancel()
-                    return centre, results, None
-                held = results
-        if held is not None:
-            # Nominatim finished first, but its list is capped at 50
-            # importance-ranked results and can miss places right next door.
-            # Overpass returns everything in the radius, so give it a short
-            # grace to land before settling for the fallback.
-            try:
-                over_results = over_fut.result(timeout=3)
-            except Exception:
-                over_results = []
-            if over_results:
-                return centre, over_results, None
-            return centre, held, None
-        # The first finisher came up empty (or nothing finished in 6s): take
-        # the first usable results from whichever finishes next.
-        try:
-            for fut in concurrent.futures.as_completed([over_fut, nom_fut], timeout=tail_timeout):
-                try:
-                    results = fut.result()
-                except Exception:
-                    results = []
-                if results:
-                    return centre, results, None
-        except concurrent.futures.TimeoutError:
-            pass  # slow source; fall through to the busy message
+                for fut in concurrent.futures.as_completed([over_fut, nom_fut], timeout=tail_timeout):
+                    first = _collect(fut, 0)
+                    if first:
+                        other = nom_fut if fut is over_fut else over_fut
+                        return centre, _merge_place_results(first, _collect(other, 3)), None
+            except concurrent.futures.TimeoutError:
+                pass  # slow source; fall through to the busy message
+            return centre, [], "Listing service is busy — try again in a moment."
+        # At least one source landed: give the other a 3s grace, then merge.
+        over_results = _collect(over_fut, 0) if over_fut in done else _collect(over_fut, 3)
+        nom_results = _collect(nom_fut, 0) if nom_fut in done else _collect(nom_fut, 3)
+        merged = _merge_place_results(over_results, nom_results)
+        if merged:
+            return centre, merged, None
+        return centre, [], "Listing service is busy — try again in a moment."
     finally:
         for fut in (over_fut, nom_fut):
             fut.cancel()
-    return centre, [], "Listing service is busy — try again in a moment."
 
 
 def places_at_checkin(checkin, radius_miles, kind, tail_timeout=30):
