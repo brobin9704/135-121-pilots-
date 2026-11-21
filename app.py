@@ -3419,6 +3419,20 @@ def _attach_button(kind, place, name):
             f'<input type="hidden" name="kind" value="{kind}">'
             f'<button type="submit" style="width:auto;padding:6px 12px">{_label}</button></form>')
 
+def _directions_url(lat, lon, name):
+    """Link that opens the place in the device's own map service: Apple Maps on
+    iPhone/iPad/Mac, Google Maps everywhere else (Android included)."""
+    try:
+        ua = request.user_agent.string or ""
+    except RuntimeError:
+        ua = ""
+    if any(t in ua for t in ("iPhone", "iPad", "iPod", "Macintosh")):
+        return ("https://maps.apple.com/?" + urllib.parse.urlencode(
+            {"q": name, "ll": f"{lat},{lon}"}))
+    return ("https://www.google.com/maps/search/?" + urllib.parse.urlencode(
+        {"api": "1", "query": f"{lat},{lon}"}))
+
+
 def external_results_html(kind, data, user, with_map=True):
     centre, results, error, radius, place = data
     kind_label = _kind_label(kind)
@@ -3459,7 +3473,15 @@ def external_results_html(kind, data, user, with_map=True):
         elif r.get("atype"):
             detail = f"<div>Type: {esc(r['atype'])}</div>"
         web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
-        addr = f"<div>Address: {esc(r['address'])}</div>" if r.get("address") else ""
+        if r.get("address"):
+            if r.get("lat") is not None and r.get("lon") is not None:
+                durl = _directions_url(r["lat"], r["lon"], r["name"])
+                addr = (f'<div>Address: <a href="{esc(durl)}" target="_blank" '
+                        f'rel="noopener">{esc(r["address"])}</a></div>')
+            else:
+                addr = f"<div>Address: {esc(r['address'])}</div>"
+        else:
+            addr = ""
         phone = (f"<div>Phone: <a href=\"tel:{esc(r['phone'])}\">{esc(r['phone'])}</a></div>"
                  if r.get("phone") else "")
         if kind == "attraction":
