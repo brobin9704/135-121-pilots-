@@ -784,37 +784,25 @@ def _merge_place_results(*sources):
     return sorted(merged.values(), key=lambda x: x.get("distance", 999))
 
 
-def yelp_search(lat, lon, radius_miles, kind):
-    """Independent third source: Yelp Fusion business search.
+_YELP_MAX_PAGES = 8  # 8 x 50 = 400 businesses per search; bounds API calls
 
-    Yelp keeps its own business database, so it can catch places missing
-    from OpenStreetMap entirely. Returns standard result dicts, nearest
-    first, or [] when the key is unset, the request fails, or the kind has
-    no Yelp category (FBOs). Never raises — a dead Yelp must never break
-    the OSM search. Yelp only lists businesses with reviews, so it can't
-    catch a brand-new place with none; that's what Overpass is for.
-    Key comes from the YELP_API_KEY env var (Render dashboard).
-    """
-    key = os.environ.get("YELP_API_KEY")
-    cats = {"restaurant": "restaurants", "hotel": "hotels",
-            "attraction": "arts,active,tours"}.get(kind)
-    if not key or not cats:
-        return []
-    params = urllib.parse.urlencode({
-        "latitude": lat, "longitude": lon,
-        "radius": min(int(radius_miles * 1609.34), 40000),
-        "categories": cats, "limit": 50, "sort_by": "distance",
-    })
+
+def _yelp_page(key, params):
+    """One Yelp Fusion business-search page; None on any failure."""
     try:
         req = urllib.request.Request(
             f"https://api.yelp.com/v3/businesses/search?{params}",
             headers={"Authorization": f"Bearer {key}", "User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            return json.loads(resp.read().decode("utf-8"))
     except Exception:
-        return []
+        return None
+
+
+def _yelp_parse(data, lat, lon, radius_miles, kind):
+    """Map one Yelp search page to standard result dicts, nearest first."""
     out = []
-    for b in data.get("businesses", []) or []:
+    for b in (data or {}).get("businesses", []) or []:
         try:
             coords = b.get("coordinates") or {}
             blat, blon = float(coords["latitude"]), float(coords["longitude"])
@@ -839,6 +827,55 @@ def yelp_search(lat, lon, radius_miles, kind):
             "distance": round(dist, 1),
             "rating": b.get("rating"), "review_count": b.get("review_count"),
         })
+    out.sort(key=lambda x: x["distance"])
+    return out
+
+
+def yelp_search(lat, lon, radius_miles, kind):
+    """Independent third source: Yelp Fusion business search.
+
+    Yelp keeps its own business database, so it can catch places missing
+    from OpenStreetMap entirely. Returns standard result dicts, nearest
+    first, or [] when the key is unset, the request fails, or the kind has
+    no Yelp category (FBOs). Never raises — a dead Yelp must never break
+    the OSM search. Yelp only lists businesses with reviews, so it can't
+    catch a brand-new place with none; that's what Overpass is for.
+    Key comes from the YELP_API_KEY env var (Render dashboard).
+    Yelp caps one call at 50 businesses, so the search pages through with
+    offset (page 0 first, then the rest in parallel, up to _YELP_MAX_PAGES)
+    — otherwise the farthest places in a wide radius get cut off.
+    """
+    key = os.environ.get("YELP_API_KEY")
+    cats = {"restaurant": "restaurants", "hotel": "hotels",
+            "attraction": "arts,active,tours"}.get(kind)
+    if not key or not cats:
+        return []
+    base = {"latitude": lat, "longitude": lon,
+            "radius": min(int(radius_miles * 1609.34), 40000),
+            "categories": cats, "limit": 50, "sort_by": "distance"}
+    first = _yelp_page(key, urllib.parse.urlencode(dict(base, offset=0)))
+    if first is None:
+        return []
+    out = _yelp_parse(first, lat, lon, radius_miles, kind)
+    try:
+        total = int(first.get("total") or 0)
+    except (TypeError, ValueError):
+        total = 0
+    pages = min((total + 49) // 50, _YELP_MAX_PAGES)
+    if pages > 1:
+        futs = [_SEARCH_POOL.submit(_yelp_page, key,
+                                     urllib.parse.urlencode(dict(base, offset=50 * i)))
+                for i in range(1, pages)]
+        done, _ = concurrent.futures.wait(futs, timeout=8)
+        for f in done:
+            try:
+                page = f.result(timeout=0)
+            except Exception:
+                continue
+            if page:
+                out.extend(_yelp_parse(page, lat, lon, radius_miles, kind))
+        for f in futs:
+            f.cancel()
     out.sort(key=lambda x: x["distance"])
     return out
 
