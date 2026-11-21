@@ -3660,7 +3660,7 @@ def hotels():
     scope = request.args.get("scope", "in")
     sort = request.args.get("sort", "new")
     tag = request.args.get("tag", "")
-    card, data, _ = at_location_section("hotel", user, [2, 5, 10, 20], 5)
+    card, data, _ = at_location_section("hotel", user, [2, 5, 10, 20], 2)
     ext = external_results_html("hotel", data, user) if data else ""
     body = card + ext + saved_reviews_section("hotel", user, q, scope, sort, tag)
     return page("Hotels", user, body)
@@ -3673,7 +3673,7 @@ def restaurants():
     scope = request.args.get("scope", "in")
     sort = request.args.get("sort", "new")
     tag = request.args.get("tag", "")
-    card, data, _ = at_location_section("restaurant", user, [2, 5, 10, 20], 5)
+    card, data, _ = at_location_section("restaurant", user, [2, 5, 10, 20], 2)
     ext = external_results_html("restaurant", data, user) if data else ""
     body = card + ext + saved_reviews_section("restaurant", user, q, scope, sort, tag)
     return page("Restaurants", user, body)
