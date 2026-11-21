@@ -1457,7 +1457,7 @@ RESULT_SEARCH_JS = """
     var shown = 0;
     for(var i = 0; i < cards.length; i++){
       var name = cards[i].getAttribute("data-name") || "";
-      var hit = !q || name.indexOf(q) !== -1;
+      var hit = !q || name.indexOf(q) === 0;
       cards[i].style.display = hit ? "" : "none";
       if(hit) shown++;
     }
@@ -3439,7 +3439,7 @@ def external_results_html(kind, data, user, with_map=True):
     map_html = (f'<div class="resultsmap" data-markers="{esc(json.dumps(markers))}"></div>'
                 if markers and with_map else "")
     search_html = ('<div style="margin:12px 0 4px"><input type="search" id="result_search" '
-                   'placeholder="Search by name" autocomplete="off" '
+                   'placeholder="Search by first letter" autocomplete="off" '
                    'style="width:100%;font-size:16px;padding:10px"></div>'
                    '<p class="muted" id="result_count" style="margin:4px 0"></p>'
                    '<p class="muted" id="result_none" style="display:none">No places match.</p>')
