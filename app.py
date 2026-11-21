@@ -846,7 +846,11 @@ def yelp_search(lat, lon, radius_miles, kind):
     — otherwise the farthest places in a wide radius get cut off.
     """
     key = os.environ.get("YELP_API_KEY")
-    cats = {"restaurant": "restaurants", "hotel": "hotels",
+    # Restaurants on Yelp means the "restaurants" parent only — coffee
+    # shops file under "coffee" (Coffee & Tea) and "cafes", so without
+    # them a Starbucks never comes back from Yelp. Overpass covers cafes
+    # when it answers, but Yelp must too for when it doesn't.
+    cats = {"restaurant": "restaurants,coffee,cafes", "hotel": "hotels",
             "attraction": "arts,active,tours"}.get(kind)
     if not key or not cats:
         return []
