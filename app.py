@@ -911,15 +911,17 @@ def yelp_search(lat, lon, radius_miles, kind):
     if radius_miles > 2:
         # Sub-area queries, all in parallel with the wide pages above so
         # the total wait stays bounded by the single 8s wait below. Each
-        # sub-query takes its three nearest pages (150 nearest to its
-        # centre — the ring centres sit in dense areas, so two pages can
-        # miss a place 0.8 mi out); results are parsed against the MAIN
-        # centre and radius so only places inside the big circle come back.
+        # sub-query takes its two nearest pages (100 nearest to its
+        # centre — measured live, the known missing places sit inside
+        # the nearest 60 of their ring centre, and a third page made the
+        # whole search flicker between runs); results are parsed against
+        # the MAIN centre and radius so only places inside the big
+        # circle come back.
         for clat, clon in _yelp_subcentres(lat, lon, radius_miles):
             sub_base = {"latitude": clat, "longitude": clon,
                         "radius": int(2 * 1609.34),
                         "categories": cats, "limit": 50, "sort_by": "distance"}
-            for off in (0, 50, 100):
+            for off in (0, 50):
                 futs.append(_YELP_POOL.submit(
                     _yelp_page, key,
                     urllib.parse.urlencode(dict(sub_base, offset=off))))
