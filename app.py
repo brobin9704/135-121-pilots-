@@ -806,6 +806,83 @@ def _parse_overpass_elements(elements, clat, clon, radius_miles):
     return results
 
 
+def _normalize_address(addr):
+    """Canonical address for grouping: lowercase, directionals and street
+    suffixes abbreviated, punctuation stripped, so '3050 Northwest Stucki
+    Place' and '3050 NW Stucki Pl' group together. Returns '' when the
+    address has no street number (city-only), so those never group."""
+    s = (addr or "").strip().lower()
+    if not re.match(r"^\d", s):
+        return ""
+    for full, abbr in (("northwest", "nw"), ("northeast", "ne"), ("southwest", "sw"),
+                       ("southeast", "se"), ("avenue", "ave"), ("street", "st"),
+                       ("road", "rd"), ("drive", "dr"), ("boulevard", "blvd"),
+                       ("parkway", "pkwy"), ("court", "ct"), ("lane", "ln"),
+                       ("place", "pl")):
+        s = re.sub(r"\b" + full + r"\b", abbr, s)
+    return re.sub(r"[^a-z0-9]", "", s)
+
+def _info_score(r):
+    """How much info a result card carries. The fuller card wins when one
+    address holds the same place twice (name, address, phone, website,
+    cuisine, hours, rating)."""
+    score = 0
+    for key in ("name", "address", "phone", "website", "cuisine", "hours"):
+        if (r.get(key) or "").strip():
+            score += 1
+    if r.get("rating") is not None:
+        score += 1
+    if r.get("review_count"):
+        score += 1
+    return score
+
+def _same_place(a, b):
+    """Two results at one address are the same place when they share a
+    normalized name, or share a phone and one name sits inside the other
+    ('McMenamins' in 'McMenamins Cornelius Pass Roadhouse'). Distinct
+    businesses that merely share an address (food carts, strip malls)
+    have different names and different phones, so they stay separate."""
+    if _normalize_place_name(a.get("name")) == _normalize_place_name(b.get("name")):
+        return True
+    pa = re.sub(r"\D", "", a.get("phone") or "")
+    pb = re.sub(r"\D", "", b.get("phone") or "")
+    if pa and pa == pb:
+        na, nb = (a.get("name") or "").lower(), (b.get("name") or "").lower()
+        return (len(na) >= 4 and na in nb) or (len(nb) >= 4 and nb in na)
+    return False
+
+def _collapse_same_address(results):
+    """One address, one card — but only for the same place. Groups results
+    by normalized street address; within a group, entries that are the
+    same place collapse to the most complete card. Distinct businesses
+    sharing an address (food carts, strip malls) keep their own cards."""
+    by_addr = {}
+    out = []
+    for r in results:
+        addr = _normalize_address(r.get("address"))
+        if not addr:
+            out.append(r)
+        else:
+            by_addr.setdefault(addr, []).append(r)
+    for group in by_addr.values():
+        if len(group) == 1:
+            out.append(group[0])
+            continue
+        clusters = []
+        for r in group:
+            placed = False
+            for cl in clusters:
+                if any(_same_place(r, other) for other in cl):
+                    cl.append(r)
+                    placed = True
+                    break
+            if not placed:
+                clusters.append([r])
+        for cl in clusters:
+            # max keeps the first (highest-priority source) on a tie.
+            out.append(max(cl, key=_info_score))
+    return out
+
 def _merge_place_results(*sources):
     """Crosscheck merge: union of sources, deduped by name + location.
 
@@ -821,7 +898,8 @@ def _merge_place_results(*sources):
             except (KeyError, TypeError, ValueError):
                 continue
             merged.setdefault(key, r)
-    return sorted(merged.values(), key=lambda x: x.get("distance", 999))
+    results = _collapse_same_address(list(merged.values()))
+    return sorted(results, key=lambda x: x.get("distance", 999))
 
 
 _YELP_MAX_PAGES = 20  # 20 x 50 = 1000 businesses, Yelp's own max; bounds API calls
