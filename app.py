@@ -844,12 +844,20 @@ def _same_place(a, b):
     have different names and different phones, so they stay separate."""
     if _normalize_place_name(a.get("name")) == _normalize_place_name(b.get("name")):
         return True
-    pa = re.sub(r"\D", "", a.get("phone") or "")
-    pb = re.sub(r"\D", "", b.get("phone") or "")
+    pa = _phone_digits(a.get("phone"))
+    pb = _phone_digits(b.get("phone"))
     if pa and pa == pb:
         na, nb = (a.get("name") or "").lower(), (b.get("name") or "").lower()
         return (len(na) >= 4 and na in nb) or (len(nb) >= 4 and nb in na)
     return False
+
+def _phone_digits(phone):
+    """Digits of a phone number, with a leading US country code dropped,
+    so '+1-503-615-2300' and '(503) 615-2300' compare equal."""
+    d = re.sub(r"\D", "", phone or "")
+    if len(d) == 11 and d.startswith("1"):
+        d = d[1:]
+    return d
 
 def _collapse_same_address(results):
     """One address, one card — but only for the same place. Groups results
