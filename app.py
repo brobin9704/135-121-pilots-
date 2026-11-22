@@ -16,6 +16,7 @@ import concurrent.futures
 import io
 import json
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -680,6 +681,33 @@ def overpass_query(lat, lon, radius_miles, amenity_filter):
                 continue
     raise RuntimeError("listing service unavailable on all mirrors")
 
+# Words sources append or drop inconsistently when naming the same place
+# ("Chipotle" vs "Chipotle Mexican Grill", "Elmer's" vs "Elmer's Restaurant").
+_GENERIC_NAME_WORDS = {
+    "mexican", "grill", "grille", "restaurant", "cafe", "coffee", "bar",
+    "kitchen", "bakery", "pizza", "subs", "sushi", "taqueria", "tacos",
+    "pub", "eatery", "diner", "bistro", "lounge", "house", "food", "foods",
+    "market", "deli", "express", "cuisine", "the", "and", "of", "tap",
+    "taphouse", "authentic",
+}
+
+def _normalize_place_name(name):
+    """Collapse spelling variants of one place for deduping.
+
+    Two sources spell the same place differently ('Carl's Jr.' vs
+    'Carl's Jr', 'Chipotle' vs 'Chipotle Mexican Grill', 'Stanfords' vs
+    "Stanford's"). The dedup keys below use this, so both copies become
+    one card. Coordinates still have to match, so distinct branches and
+    food-court neighbours stay separate.
+    """
+    s = (name or "").lower()
+    s = s.replace("’", "'").replace("‘", "'").replace("´", "'")
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    words = [w for w in s.split() if w not in _GENERIC_NAME_WORDS]
+    if not words:  # the whole name is generic words ("The Bistro") — keep it
+        words = s.split()
+    return "".join(words)
+
 def nominatim_fallback(lat, lon, radius_miles, kind, city):
     """Fallback when Overpass is busy: search by place type near the city, then filter by distance.
 
@@ -717,7 +745,7 @@ def nominatim_fallback(lat, lon, radius_miles, kind, city):
         dist = haversine_miles(lat, lon, rlat, rlon)
         if dist > radius_miles + 0.05:
             continue
-        key = ((r.get("name") or "").lower(), round(rlat, 4), round(rlon, 4))
+        key = (_normalize_place_name(r.get("name")), round(rlat, 4), round(rlon, 4))
         if key in seen:
             continue
         seen.add(key)
@@ -753,7 +781,7 @@ def _parse_overpass_elements(elements, clat, clon, radius_miles):
         elon = el.get("lon") or (el.get("center") or {}).get("lon")
         if elat is None or elon is None:
             continue
-        key = (name.lower(), round(float(elat), 4), round(float(elon), 4))
+        key = (_normalize_place_name(name), round(float(elat), 4), round(float(elon), 4))
         if key in seen:
             continue
         seen.add(key)
@@ -789,7 +817,7 @@ def _merge_place_results(*sources):
     for src in sources:
         for r in (src or []):
             try:
-                key = ((r.get("name") or "").lower(), round(float(r["lat"]), 4), round(float(r["lon"]), 4))
+                key = (_normalize_place_name(r.get("name")), round(float(r["lat"]), 4), round(float(r["lon"]), 4))
             except (KeyError, TypeError, ValueError):
                 continue
             merged.setdefault(key, r)
@@ -949,7 +977,7 @@ def yelp_search(lat, lon, radius_miles, kind):
     seen = {}
     for r in out:
         try:
-            k = (r["name"].lower(), round(float(r["lat"]), 4), round(float(r["lon"]), 4))
+            k = (_normalize_place_name(r["name"]), round(float(r["lat"]), 4), round(float(r["lon"]), 4))
         except (KeyError, TypeError, ValueError):
             continue
         seen.setdefault(k, r)
