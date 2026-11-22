@@ -688,7 +688,7 @@ _GENERIC_NAME_WORDS = {
     "kitchen", "bakery", "pizza", "subs", "sushi", "taqueria", "tacos",
     "pub", "eatery", "diner", "bistro", "lounge", "house", "food", "foods",
     "market", "deli", "express", "cuisine", "the", "and", "of", "tap",
-    "taphouse", "authentic",
+    "taphouse", "authentic", "gourmet", "burgers", "brews",
 }
 
 def _normalize_place_name(name):
