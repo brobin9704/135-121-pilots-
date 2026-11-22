@@ -1,5 +1,5 @@
 """
-Pilots and Crew Community - deployable version.
+BtwnFlghts - deployable version.
 
 Check-in-only location model:
   Location is ONLY the airport code and city a pilot types when checking in.
@@ -1481,7 +1481,7 @@ def page(title, user, body, flash=None, error=None):
                      'style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;line-height:1">🔔</button>')
         theme_btn = ('<button id="theme_toggle" onclick="pccToggleTheme(this)" title="Switch light / dark" '
                      'style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;line-height:1">☀️</button>')
-        chrome = (f'<div class="appname">Pilot &amp; Crew Community</div>'
+        chrome = (f'<div class="appname">BtwnFlghts</div>'
                   f'<div class="topbar"><span class="brand" id="greet">Hello, {first}</span>{sound_btn}{theme_btn}{logout}</div>'
                   f'<script>(function(){{var h=new Date().getHours();'
                   f'var g=h<12?"Good morning":h<18?"Good afternoon":"Good evening";'
@@ -1529,7 +1529,7 @@ def page(title, user, body, flash=None, error=None):
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       {pwa_head}
-      <title>{{{{ title }}}} - Pilots and Crew Community</title><style>{CSS}</style>
+      <title>{{{{ title }}}} - BtwnFlghts</title><style>{CSS}</style>
       <script>try{{var t=localStorage.getItem('pcc_theme');if(t==='light')document.documentElement.classList.add('light');if(localStorage.getItem('pcc_map_hidden')==='1')document.documentElement.classList.add('hide-resultsmap');}}catch(e){{}}</script></head>
       <body class="{bcls}"><div class="wrap">{chrome}{msg}{err}{body}{after}</div></body></html>""",
       title=title)
@@ -1769,7 +1769,7 @@ function check(){ if(document.visibilityState !== "visible") return; fetch("/api
 if(lastCheckin === null){ lastCheckin = d.checkin_id; lastUnread = d.unread; d.friends.forEach(function(f){ seen[f.id] = 1; }); return; }
 if(d.checkin_id !== lastCheckin){ lastCheckin = d.checkin_id; seen = {}; d.friends.forEach(function(f){ seen[f.id] = 1; }); lastUnread = d.unread; return; }
 d.friends.forEach(function(f){ if(!seen[f.id]){ seen[f.id] = 1; if(soundsOn()){ if(!audioAwake()){ requestSystemSound(f.name + " checked in at " + f.airport + " / " + f.city, f.name + " just checked in at " + f.airport + " / " + f.city + ", where you are checked in too.", "/"); } ring(); } banner("🔔 " + f.name + " just checked in at " + f.airport + " · " + f.city); } });
-if(d.unread > lastUnread){ if(soundsOn()){ if(!audioAwake()){ requestSystemSound("Pilot & Crew Community", "You have a new message. Log in to read it.", d.latest_from_id ? "/messages/" + d.latest_from_id : "/"); } ding(); } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
+if(d.unread > lastUnread){ if(soundsOn()){ if(!audioAwake()){ requestSystemSound("BtwnFlghts", "You have a new message. Log in to read it.", d.latest_from_id ? "/messages/" + d.latest_from_id : "/"); } ding(); } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
 lastUnread = d.unread;
 }).catch(function(){}); }
 setInterval(check, 10000);
@@ -2058,7 +2058,7 @@ def forgot_password():
                        (user["id"], _hash_reset_token(token), int(time.time()) + 3600))
             db.commit()
             link = request.host_url.rstrip("/") + url_for("reset_password", token=token)
-            sent = send_email(email, "Reset your Pilots and Crew Community password",
+            sent = send_email(email, "Reset your BtwnFlghts password",
                               f"Hi {user['name']},\n\nSomeone asked to reset the password for this account.\n\n"
                               f"Reset it here (valid 1 hour, one-time use):\n{link}\n\n"
                               "If that wasn't you, just ignore this email.")
@@ -2272,7 +2272,7 @@ def login_page(error=None):
     err = f'<div class="error">{error}</div>' if error else ""
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Log in - Pilots and Crew Community</title><style>
+      <title>Log in - BtwnFlghts</title><style>
       body{{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e2e8f0;
         min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}}
       .bg{{position:fixed;inset:0;background:url('{url_for("static", filename="login-bg.jpg")}') center/cover no-repeat}}
@@ -2296,8 +2296,8 @@ def login_page(error=None):
       .atc_hint{{position:fixed;bottom:14px;left:0;right:0;z-index:5;text-align:center;color:#cbd5e1;
         font-size:13px;opacity:.85;pointer-events:none;text-shadow:0 1px 6px #000;display:none}}
       </style></head><body><div class="bg"></div><div class="scrim"></div>
-      <div class="card"><h1>Pilots and Crew Community</h1>
-      <p class="tag">The Pilots and Crew Community App is where pilots share real layover intel. Check in at your overnight, leave your honest opinion of the hotels and restaurants nearby, and read what other pilots thought before you book, eat, or sleep.</p>
+      <div class="card"><h1>BtwnFlghts</h1>
+      <p class="tag">BtwnFlghts is where pilots share real layover intel. Check in at your overnight, leave your honest opinion of the hotels and restaurants nearby, and read what other pilots thought before you book, eat, or sleep.</p>
       {err}<form method="post" id="login_form">
       <label>Email</label><input type="email" name="email" required autocomplete="email">
       <label>Password</label><input type="password" name="password" required autocomplete="current-password">
@@ -2928,7 +2928,7 @@ def airnav_fbos(airport_code):
     if not code:
         return [], "no airport code"
     url = f"https://www.airnav.com/airport/{code}"
-    req = urllib.request.Request(url, headers={"User-Agent": "PilotCrewCommunity/1.0 (pilot FBO directory)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "BtwnFlghts/1.0 (pilot FBO directory)"})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
             h = r.read().decode("utf-8", "ignore")
@@ -3121,7 +3121,7 @@ def board():
                     for fr in buds:
                         send_email(fr["email"], f"{user['name']} checked in at {code} / {city}",
                                    f"{user['name']} just checked in at {code} / {city}, where you are checked in too.\n\n"
-                                   "Open Pilot & Crew Community to say hi.")
+                                   "Open BtwnFlghts to say hi.")
                         _send_push(fr["id"], f"{user['name']} checked in at {code} / {city}",
                                    f"{user['name']} just checked in at {code} / {city}, where you are checked in too.", "/")
             else:
@@ -3947,9 +3947,9 @@ def _request_friend(db, user, fid, friend_ids):
     if to_user:
         login_url = request.host_url.rstrip("/") + url_for("friends")
         send_email(to_user["email"],
-                   "New friend request on Pilots and Crew Community",
+                   "New friend request on BtwnFlghts",
                    f"Hi {to_user['name']},\n\n{user['name']} sent you a friend request "
-                   f"on Pilots and Crew Community.\n\nLog in at {login_url} "
+                   f"on BtwnFlghts.\n\nLog in at {login_url} "
                    f"to approve or decline it.\n")
     return f"Friend request sent to {esc(target['name'])}. They need to approve it.", None
 
@@ -4267,12 +4267,12 @@ def _notify_message(sender, to_id, body):
         return
     thread_url = request.host_url.rstrip("/") + url_for("conversation", user_id=sender["id"])
     send_email(to_user["email"],
-               f"New message from {sender['name']} on Pilots and Crew Community",
+               f"New message from {sender['name']} on BtwnFlghts",
                f"Hi {to_user['name']},\n\n{sender['name']} sent you a message "
-               f"on Pilots and Crew Community:\n\n\"{body[:500]}\"\n\n"
+               f"on BtwnFlghts:\n\n\"{body[:500]}\"\n\n"
                f"Log in at {thread_url} to reply.\n")
     # The push itself carries no content: the message is only visible after login.
-    _send_push(to_id, "Pilot & Crew Community", "You have a new message. Log in to read it.",
+    _send_push(to_id, "BtwnFlghts", "You have a new message. Log in to read it.",
                f"/messages/{sender['id']}")
 
 
@@ -4424,8 +4424,8 @@ def apple_touch_icon():
 @app.route("/manifest.json")
 def manifest():
     return jsonify({
-        "name": "Pilot & Crew Community",
-        "short_name": "PilotCrew",
+        "name": "BtwnFlghts",
+        "short_name": "BtwnFlghts",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#0f172a",
@@ -4435,7 +4435,7 @@ def manifest():
                   {"src": PWA_ICON_SVG, "sizes": "any", "type": "image/svg+xml"}],
     })
 
-SW_JS = """const CACHE = "pcc-v4";
+SW_JS = """const CACHE = "btwnflghts-v1";
 const CORE = ["/static/airports.json", "/offline", "/manifest.json"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
@@ -4469,7 +4469,7 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("message", (e) => {
   const d = e.data || {};
   if (d.type !== "pcc-notify") return;
-  const title = d.title || "Pilot & Crew Community";
+  const title = d.title || "BtwnFlghts";
   const options = { body: d.body || "", tag: "pcc", data: { url: d.url || "/" } };
   e.waitUntil(self.registration.showNotification(title, options));
 });
@@ -4483,7 +4483,7 @@ self.addEventListener("push", (e) => {
       open.postMessage({ type: "pcc-push", url: data.url || "/" });
       return;
     }
-    const title = data.title || "Pilot & Crew Community";
+    const title = data.title || "BtwnFlghts";
     const options = { body: data.body || "", tag: data.tag || "pcc", data: { url: data.url || "/" } };
     return self.registration.showNotification(title, options);
   }));
