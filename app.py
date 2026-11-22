@@ -960,6 +960,7 @@ def _yelp_parse(data, lat, lon, radius_miles, kind):
             "atype": kind,
             "distance": round(dist, 1),
             "rating": b.get("rating"), "review_count": b.get("review_count"),
+            "image": b.get("image_url") or "",
         })
     out.sort(key=lambda x: x["distance"])
     return out
@@ -1202,6 +1203,34 @@ label{font-weight:600}.muted{color:#94a3b8}.stars{color:#facc15;letter-spacing:2
 .flash{background:#365314;border:1px solid #65a30d;padding:10px;border-radius:10px;margin:12px 0}
 .error{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:12px 0}
 @media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}.card{padding:14px}.minimap{height:160px}.resultsmap{height:220px}}
+.dist-badge{display:inline-block;background:#0369a1;color:#fff;font-weight:700;font-size:13px;border-radius:999px;padding:2px 10px;margin-left:6px;white-space:nowrap}
+.rc-top{display:flex;gap:12px}
+.rc-photo{flex:0 0 96px;width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid #475569}
+.rc-body{flex:1;min-width:0}
+.rc-stars{color:#facc15;letter-spacing:1px;font-size:14px;margin:2px 0}
+.rc-stars .rc-count{color:#94a3b8;letter-spacing:0}
+.map-toggle{background:none;border:1px solid #475569;color:#e2e8f0;border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer;min-height:36px}
+html.hide-resultsmap .resultsmap{display:none}
+/* Light theme (dark is the default) */
+html.light body{background:#f1f5f9;color:#0f172a}
+html.light a{color:#0369a1}
+html.light .appname{color:#0369a1}
+html.light nav a,html.light .btn{background:#fff;color:#0f172a;border-color:#cbd5e1}
+html.light nav a.active{background:#0284c7;color:#fff}
+html.light .bnav{background:#fff;border-top-color:#cbd5e1}
+html.light .bnav a{color:#64748b}
+html.light .bnav a.on{color:#0284c7}
+html.light .card{background:#fff;border-color:#e2e8f0}
+html.light input,html.light select,html.light textarea{background:#fff;color:#0f172a;border-color:#cbd5e1}
+html.light .muted{color:#64748b}
+html.light .tag{background:#f1f5f9;border-color:#cbd5e1}
+html.light .logout_link{color:#64748b;border-color:#cbd5e1}
+html.light .flash{background:#ecfccb;border-color:#65a30d}
+html.light .error{background:#fee2e2;border-color:#ef4444}
+html.light .rc-photo{border-color:#cbd5e1}
+html.light .map-toggle{border-color:#cbd5e1;color:#0f172a}
+html.light .dist-badge{background:#0284c7}
+html.light .rc-stars .rc-count{color:#64748b}
 """
 
 # Auto-fills the city when an airport code is typed on the Check-In form.
@@ -1450,8 +1479,10 @@ def page(title, user, body, flash=None, error=None):
         logout = f'<a href="{url_for("logout")}" class="logout_link">Log out</a>' if title == "Home" else ""
         sound_btn = ('<button id="sound_toggle" onclick="pccToggleSound(this)" title="Check-in and message sounds" '
                      'style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;line-height:1">🔔</button>')
+        theme_btn = ('<button id="theme_toggle" onclick="pccToggleTheme(this)" title="Switch light / dark" '
+                     'style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;line-height:1">☀️</button>')
         chrome = (f'<div class="appname">Pilot &amp; Crew Community</div>'
-                  f'<div class="topbar"><span class="brand" id="greet">Hello, {first}</span>{sound_btn}{logout}</div>'
+                  f'<div class="topbar"><span class="brand" id="greet">Hello, {first}</span>{sound_btn}{theme_btn}{logout}</div>'
                   f'<script>(function(){{var h=new Date().getHours();'
                   f'var g=h<12?"Good morning":h<18?"Good afternoon":"Good evening";'
                   f'document.getElementById("greet").textContent=g+", "+{first_js};}})();</script>')
@@ -1486,6 +1517,8 @@ def page(title, user, body, flash=None, error=None):
                  '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}</script>'
                  f'{SOUND_JS}'
                  f'{RESULT_SEARCH_JS}'
+                 f'{THEME_JS}'
+                 f'{MAP_TOGGLE_JS}'
                  f'{AVATAR_JS}')
     pwa_head = ('<link rel="manifest" href="/manifest.json">'
                 '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
@@ -1496,7 +1529,8 @@ def page(title, user, body, flash=None, error=None):
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       {pwa_head}
-      <title>{{{{ title }}}} - Pilots and Crew Community</title><style>{CSS}</style></head>
+      <title>{{{{ title }}}} - Pilots and Crew Community</title><style>{CSS}</style>
+      <script>try{{var t=localStorage.getItem('pcc_theme');if(t==='light')document.documentElement.classList.add('light');if(localStorage.getItem('pcc_map_hidden')==='1')document.documentElement.classList.add('hide-resultsmap');}}catch(e){{}}</script></head>
       <body class="{bcls}"><div class="wrap">{chrome}{msg}{err}{body}{after}</div></body></html>""",
       title=title)
 
@@ -1606,6 +1640,7 @@ MINIMAP_JS = """
       try{markers=JSON.parse(d.getAttribute('data-markers'));}catch(e){return;}
       if(!markers||!markers.length)return;
       var m=L.map(d,{zoomControl:false}).setView([markers[0].lat,markers[0].lon],12);
+      d._leaflet=m;
       tiles(m);
       var bounds=[];
       markers.forEach(function(p){
@@ -1652,6 +1687,47 @@ RESULT_SEARCH_JS = """
   }
   box.addEventListener("input", run);
   run();
+})();
+</script>
+"""
+
+# Light/dark theme toggle. The app is dark by default; the choice persists
+# per device in localStorage. The toggle button shows the mode it switches to.
+THEME_JS = """
+<script>
+function pccToggleTheme(btn){
+  var h=document.documentElement;
+  var light=h.classList.toggle('light');
+  try{localStorage.setItem('pcc_theme',light?'light':'dark');}catch(e){}
+  if(btn)btn.textContent=light?'\\uD83C\\uDF19':'\\u2600\\uFE0F';
+}
+(function(){
+  var b=document.getElementById('theme_toggle');
+  if(b)b.textContent=document.documentElement.classList.contains('light')?'\\uD83C\\uDF19':'\\u2600\\uFE0F';
+})();
+</script>
+"""
+
+# Show/hide the results map. The choice persists per device in localStorage.
+# The Leaflet map instance is kept on the div (MINIMAP_JS) so showing it
+# again can re-size the map correctly.
+MAP_TOGGLE_JS = """
+<script>
+function pccToggleMap(){
+  var h=document.documentElement;
+  var hidden=h.classList.toggle('hide-resultsmap');
+  try{localStorage.setItem('pcc_map_hidden',hidden?'1':'0');}catch(e){}
+  var b=document.getElementById('map_toggle');
+  if(b)b.textContent=hidden?'Show map':'Hide map';
+  if(!hidden){
+    var d=document.querySelector('.resultsmap');
+    if(d&&d._leaflet){d._leaflet.invalidateSize();}
+  }
+}
+(function(){
+  var b=document.getElementById('map_toggle');
+  if(!b)return;
+  if(document.documentElement.classList.contains('hide-resultsmap'))b.textContent='Show map';
 })();
 </script>
 """
@@ -3637,6 +3713,10 @@ def external_results_html(kind, data, user, with_map=True):
                if r.get("lat") is not None and r.get("lon") is not None]
     map_html = (f'<div class="resultsmap" data-markers="{esc(json.dumps(markers))}"></div>'
                 if markers and with_map else "")
+    map_toggle = ""
+    if markers and with_map:
+        map_toggle = ('<div style="margin:4px 0"><button type="button" class="map-toggle" '
+                      'id="map_toggle" onclick="pccToggleMap()">Hide map</button></div>')
     search_html = ('<div style="margin:12px 0 4px"><input type="search" id="result_search" '
                    'placeholder="Search by first letter" autocomplete="off" '
                    'style="width:100%;font-size:16px;padding:10px"></div>'
@@ -3647,28 +3727,38 @@ def external_results_html(kind, data, user, with_map=True):
         detail = ""
         if kind == "hotel":
             if r.get("brand") and r["brand"] != r["name"]:
-                detail = f"<div>Brand: {esc(r['brand'])}</div>"
+                detail = f"<div>{esc(r['brand'])}</div>"
         elif kind == "restaurant":
             if r.get("cuisine"):
-                detail += f"<div>Cuisine: {esc(r['cuisine'])}</div>"
+                detail += f"<div>{esc(r['cuisine'])}</div>"
             if r.get("hours"):
-                detail += f"<div>Hours: {esc(r['hours'])}</div>"
+                detail += f"<div>{esc(r['hours'])}</div>"
         elif kind == "fbo" and r.get("brand"):
-            detail = f"<div>Brand: {esc(r['brand'])}</div>"
+            detail = f"<div>{esc(r['brand'])}</div>"
         elif r.get("atype"):
-            detail = f"<div>Type: {esc(r['atype'])}</div>"
+            detail = f"<div>{esc(r['atype'])}</div>"
         web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
         if r.get("address"):
             if r.get("lat") is not None and r.get("lon") is not None:
                 durl = _directions_url(r["lat"], r["lon"], r["name"])
-                addr = (f'<div>Address: <a href="{esc(durl)}" target="_blank" '
+                addr = (f'<div><a href="{esc(durl)}" target="_blank" '
                         f'rel="noopener">{esc(r["address"])}</a></div>')
             else:
-                addr = f"<div>Address: {esc(r['address'])}</div>"
+                addr = f"<div>{esc(r['address'])}</div>"
         else:
             addr = ""
-        phone = (f"<div>Phone: <a href=\"tel:{esc(r['phone'])}\">{esc(r['phone'])}</a></div>"
+        phone = (f"<div><a href=\"tel:{esc(r['phone'])}\">{esc(r['phone'])}</a></div>"
                  if r.get("phone") else "")
+        rating_html = ""
+        if r.get("rating") is not None:
+            cnt = (f' <span class="rc-count">({r["review_count"]} reviews)</span>'
+                   if r.get("review_count") else "")
+            rating_html = f'<div class="rc-stars">★ {r["rating"]}{cnt}</div>'
+        photo_html = ""
+        if r.get("image"):
+            photo_html = (f'<img class="rc-photo" src="{esc(r["image"])}" alt="" loading="lazy">')
+        elif r.get("logo"):
+            photo_html = (f'<img class="rc-photo" src="{esc(r["logo"])}" alt="" loading="lazy">')
         if kind == "attraction":
             # No reviews for attractions — link the name to an OSM search.
             loc_url = ("https://www.openstreetmap.org/search?" + urllib.parse.urlencode(
@@ -3694,11 +3784,10 @@ def external_results_html(kind, data, user, with_map=True):
                 {"query": f"{r['name']}, {place['city']}"}))
             name_html = (f'<a href="{loc_url}" target="_blank" rel="noopener">'
                          f'<strong>{esc(r["name"])}</strong></a>')
-        cards += f"""<div class="card result-card" data-name="{esc(r['name'].lower())}">{name_html} <span class="muted">{r['distance']} mi</span>
-          {f'<div><img src="{esc(r["logo"])}" alt="{esc(r["name"])} logo" style="max-width:200px;max-height:60px;margin:8px 0"></div>' if r.get("logo") else ""}
-          {detail}{addr}{phone}{web}
+        cards += f"""<div class="card result-card" data-name="{esc(r['name'].lower())}"><div class="rc-top">{photo_html}<div class="rc-body">{name_html} <span class="dist-badge">{r['distance']} mi</span>
+          {rating_html}{detail}{addr}{phone}{web}</div></div>
           {action_html}</div>"""
-    return header + map_html + search_html + '<div id="result_list">' + cards + '</div>'
+    return header + map_toggle + map_html + search_html + '<div id="result_list">' + cards + '</div>'
 
 @app.route("/attractions", methods=["GET", "POST"])
 @login_required
