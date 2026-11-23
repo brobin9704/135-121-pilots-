@@ -1169,7 +1169,7 @@ def places_at_checkin(checkin, radius_miles, kind, tail_timeout=30):
 # ---------------------------------------------------------------- rendering
 CSS = """
 html{-webkit-text-size-adjust:100%}
-body{font-family:'Manrope',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0086E8;color:#eef7f3;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+body{font-family:'Manrope',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#07141f;color:#eef7f3;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 h1,h2,h3{font-family:'Poppins','Manrope',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 img{max-width:100%;height:auto}
 a{color:#5eeab3}.wrap{max-width:760px;margin:0 auto;padding:16px}.wrap-wide{max-width:1080px}
@@ -1183,7 +1183,7 @@ nav a.active{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a;bo
 .you-pin-wrap{background:none;border:none}
 .you-pin-shape{position:relative;width:24px;height:24px;background:#ef4444;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .you-pin-shape:after{content:"";position:absolute;left:6px;top:6px;width:8px;height:8px;background:#fff;border-radius:50%}
-.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:10px 4px;background:#07141f;backdrop-filter:blur(8px);border-bottom:1px solid rgba(110,231,183,.14)}
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:10px 4px;background:rgba(7,20,31,.9);backdrop-filter:blur(8px);border-bottom:1px solid rgba(110,231,183,.14)}
 .brand-logo{display:inline-flex;align-items:center;flex:0 0 auto}
 .brand-logo img{height:40px;width:auto;display:block;border-radius:10px}
 .topnav{margin:0 auto;display:flex;gap:8px}
@@ -1252,7 +1252,7 @@ html.hide-resultsmap .resultsmap{display:none}
 @media(max-width:1020px){.reviews-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:680px){.reviews-grid{grid-template-columns:1fr}}
 /* Light theme (dark is the default) */
-html.light body{background:#0086E8;color:#0c2531}
+html.light body{background:#e9f2ee;color:#0c2531}
 html.light a{color:#0369a1}
 html.light nav a,html.light .btn{background:#fff;color:#0c2531;border-color:#cbd5e1}
 html.light nav a.active{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a}
@@ -1545,7 +1545,7 @@ def page(title, user, body, flash=None, error=None):
                  f'{AVATAR_JS}')
     pwa_head = ('<link rel="manifest" href="/manifest.json">'
                 '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
-                '<meta name="theme-color" content="#0086E8">'
+                '<meta name="theme-color" content="#07141f">'
                 '<meta name="mobile-web-app-capable" content="yes">'
                 '<meta name="apple-mobile-web-app-capable" content="yes">'
                 '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">')
