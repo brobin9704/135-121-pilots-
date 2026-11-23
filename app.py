@@ -1250,6 +1250,9 @@ html.hide-resultsmap .resultsmap{display:none}
 .reviews-grid .card{margin:0}
 @media(max-width:1020px){.reviews-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:680px){.reviews-grid{grid-template-columns:1fr}}
+/* Landscape orientation: sideways screens are wide but short, so compact vertically */
+@media (orientation:landscape) and (max-height:500px){.topbar{padding:6px 4px;gap:8px}.topbar-right{gap:4px}.brand-logo img{height:32px}.avatar-link img,.avatar-link .avatar-initial{width:32px;height:32px;font-size:15px}.topnav a{padding:6px 12px;font-size:14px}.hero{padding:14px 16px;margin:10px 0 14px;gap:14px}.hero h1{font-size:22px}.hero-sub{font-size:14px;margin-top:4px}.hero-avatar img{width:56px;height:56px}.home-grid{grid-template-columns:1fr 1fr}.home-stack{grid-template-columns:1fr 1fr}.reviews-grid{grid-template-columns:repeat(2,1fr)}.card{padding:12px;margin:10px 0}.home-grid,.home-stack,.reviews-grid{gap:14px}.wrap{padding:10px 16px}.minimap{height:140px}.resultsmap{height:180px}.qa-tile{min-height:72px}}
+@media (orientation:landscape) and (min-height:501px) and (max-height:850px){.hero{padding:18px 20px;margin:12px 0 16px}.hero h1{font-size:26px}.hero-avatar img{width:72px;height:72px}.card{padding:14px}.minimap{height:160px}.resultsmap{height:220px}}
 /* Light theme (dark is the default) */
 html.light body{background:#e9f2ee;color:#0c2531}
 html.light a{color:#0369a1}
