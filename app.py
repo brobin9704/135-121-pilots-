@@ -3695,6 +3695,19 @@ def _directions_url(lat, lon, name):
         {"api": "1", "query": f"{lat},{lon}"}))
 
 
+def _map_search_url(query):
+    """Device map search by text query (no coordinates): Apple Maps on
+    iPhone/iPad/Mac, Google Maps everywhere else."""
+    try:
+        ua = request.user_agent.string or ""
+    except RuntimeError:
+        ua = ""
+    if any(t in ua for t in ("iPhone", "iPad", "iPod", "Macintosh")):
+        return "https://maps.apple.com/?" + urllib.parse.urlencode({"q": query})
+    return ("https://www.google.com/maps/search/?" + urllib.parse.urlencode(
+        {"api": "1", "query": query}))
+
+
 def external_results_html(kind, data, user, with_map=True):
     centre, results, error, radius, place = data
     kind_label = _kind_label(kind)
@@ -3760,11 +3773,16 @@ def external_results_html(kind, data, user, with_map=True):
             photo_html = (f'<img class="rc-photo" src="{esc(r["image"])}" alt="" loading="lazy">')
         elif r.get("logo"):
             photo_html = (f'<img class="rc-photo" src="{esc(r["logo"])}" alt="" loading="lazy">')
+        # Tapping a result name opens the place in the device's own map app
+        # (Apple Maps on Apple devices, Google Maps elsewhere) — at the exact
+        # coordinates when known, by name + city search when not.
+        if r.get("lat") is not None and r.get("lon") is not None:
+            name_url = _directions_url(r["lat"], r["lon"], r["name"])
+        else:
+            name_url = _map_search_url(f"{r['name']}, {place['city']}")
         if kind == "attraction":
-            # No reviews for attractions — link the name to an OSM search.
-            loc_url = ("https://www.openstreetmap.org/search?" + urllib.parse.urlencode(
-                {"query": f"{r['name']}, {place['city']}"}))
-            name_html = (f'<a href="{loc_url}" target="_blank" rel="noopener">'
+            # No reviews for attractions — link the name to the device map.
+            name_html = (f'<a href="{esc(name_url)}" target="_blank" rel="noopener">'
                          f'<strong>{esc(r["name"])}</strong></a>')
             add = (url_for("new_review") + "?" + urllib.parse.urlencode(
                 {"kind": "attraction", "place": r["name"], "airport": place["airport_code"], "city": place["city"],
@@ -3777,13 +3795,10 @@ def external_results_html(kind, data, user, with_map=True):
                  "phone": r["phone"] or "", "address": r["address"] or "",
                  "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
             checkin_btn = _attach_button(kind, place, r["name"])
-            name_html = f'<a href="{add}"><strong>{esc(r["name"])}</strong></a>'
             action_html = f'<p><a href="{add}">Add review</a></p>{checkin_btn}'
-            # Tapping a result name shows the place on the map (new tab), like saved
-            # reviews and attractions — the Add review link is the path to the review form.
-            loc_url = ("https://www.openstreetmap.org/search?" + urllib.parse.urlencode(
-                {"query": f"{r['name']}, {place['city']}"}))
-            name_html = (f'<a href="{loc_url}" target="_blank" rel="noopener">'
+            # Tapping a result name opens the place in the device's map app
+            # (new tab) — the Add review link is the path to the review form.
+            name_html = (f'<a href="{esc(name_url)}" target="_blank" rel="noopener">'
                          f'<strong>{esc(r["name"])}</strong></a>')
         cards += f"""<div class="card result-card" data-name="{esc(r['name'].lower())}"><div class="rc-top">{photo_html}<div class="rc-body">{name_html} <span class="dist-badge">{r['distance']} mi</span>
           {rating_html}{detail}{addr}{phone}{web}</div></div>
