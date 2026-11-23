@@ -1169,69 +1169,122 @@ def places_at_checkin(checkin, radius_miles, kind, tail_timeout=30):
 # ---------------------------------------------------------------- rendering
 CSS = """
 html{-webkit-text-size-adjust:100%}
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0f172a;color:#e2e8f0;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+body{font-family:'Manrope',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#07141f;color:#eef7f3;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+h1,h2,h3{font-family:'Poppins','Manrope',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 img{max-width:100%;height:auto}
-a{color:#7dd3fc}.wrap{max-width:760px;margin:0 auto;padding:16px}
+a{color:#5eeab3}.wrap{max-width:760px;margin:0 auto;padding:16px}.wrap-wide{max-width:1080px}
 header{display:flex;justify-content:space-between;align-items:center;gap:12px}
 nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-nav a,.btn{background:#1e293b;color:#e2e8f0;text-decoration:none;padding:10px 14px;border-radius:10px;border:1px solid #334155;display:inline-block}
-nav a.active{background:#0369a1}
-.topbar{display:flex;align-items:center;gap:10px;padding:12px 4px}
-.brand{font-weight:800;letter-spacing:.5px;font-size:15px}
-.appname{text-align:center;font-size:11px;letter-spacing:2px;color:#7dd3fc;font-weight:700;padding:calc(10px + env(safe-area-inset-top)) 4px 0}
+nav a,.btn{background:#102330;color:#eef7f3;text-decoration:none;padding:10px 14px;border-radius:10px;border:1px solid rgba(110,231,183,.16);display:inline-block}
+nav a.active{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a;border-color:transparent}
 .minimap{height:180px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
 .resultsmap{height:260px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
 #locmap{position:relative;z-index:0}
 .you-pin-wrap{background:none;border:none}
 .you-pin-shape{position:relative;width:24px;height:24px;background:#ef4444;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .you-pin-shape:after{content:"";position:absolute;left:6px;top:6px;width:8px;height:8px;background:#fff;border-radius:50%}
-.logout_link{margin-left:auto;color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:8px 14px;min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
-.has_bnav .wrap{padding-bottom:160px}
-.bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1626;border-top:1px solid #334155;padding:8px 4px calc(10px + env(safe-area-inset-bottom))}
-.bnav a{flex:1;text-align:center;color:#8fa0b8;text-decoration:none;font-size:10px;min-height:48px;display:flex;flex-direction:column;justify-content:center;align-items:center;white-space:nowrap}
-.bnav a .e{display:block;font-size:20px}
-.bnav a.on{color:#38bdf8;font-weight:700}
-.msgdot{display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:999px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:middle}
-.card{background:#1e293b;border:1px solid #334155;border-radius:14px;padding:16px;margin:12px 0}
-input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;box-sizing:border-box;font-size:16px}
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:10px 4px;background:rgba(7,20,31,.9);backdrop-filter:blur(8px);border-bottom:1px solid rgba(110,231,183,.14)}
+.brand-logo{display:inline-flex;align-items:center;flex:0 0 auto}
+.brand-logo img{height:40px;width:auto;display:block;border-radius:10px}
+.topnav{margin:0 auto;display:flex;gap:8px}
+.topnav a{background:rgba(16,38,52,.85);border:1px solid rgba(110,231,183,.16);border-radius:999px;padding:8px 18px;color:#eef7f3;text-decoration:none;font-weight:700;font-size:15px}
+.topnav a.on{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a;border-color:transparent}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.icon-btn{background:none;border:none;font-size:18px;cursor:pointer;padding:8px;line-height:1;color:#eef7f3}
+.topbar-div{width:1px;height:28px;background:rgba(110,231,183,.2);margin:0 4px}
+.avatar-link{display:inline-flex;border-radius:50%}
+.avatar-link img{width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;border:2px solid rgba(60,232,165,.45)}
+.avatar-link .avatar-initial{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#1d4a3a;color:#3ce8a5;font-weight:700;font-size:18px;border:2px solid rgba(60,232,165,.45)}
+.logout_link{color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:8px 14px;min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
+.msgdot{display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:999px;background:#e5484d;color:#fff;font-size:10px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:middle}
+.card{background:#102330;border:1px solid rgba(110,231,183,.16);border-radius:20px;padding:16px;margin:12px 0;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #2c4a44;background:#0a1c2a;color:#eef7f3;box-sizing:border-box;font-size:16px}
 input[type="checkbox"],input[type="radio"]{width:auto;min-height:24px;min-width:24px}
-button,.btn-primary{background:#0284c7;color:#fff;border:0;padding:12px 16px;border-radius:10px;font-size:16px;cursor:pointer;width:100%;touch-action:manipulation;min-height:44px}
+button,.btn-primary{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a;border:0;padding:12px 16px;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;width:100%;touch-action:manipulation;min-height:44px}
 form[style*="inline"] button{min-height:36px}
-label{font-weight:600}.muted{color:#94a3b8}.stars{color:#facc15;letter-spacing:2px}
-.tag{display:inline-block;background:#0f172a;border:1px solid #475569;border-radius:999px;padding:2px 10px;margin:2px;font-size:13px}
+label{font-weight:600}.muted{color:#9db8b0}.stars{color:#f5b93f;letter-spacing:2px}
+.tag{display:inline-block;background:#0a1c2a;border:1px solid rgba(110,231,183,.2);border-radius:999px;padding:2px 10px;margin:2px;font-size:13px}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .thumbs img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid #475569}
 .flash{background:#365314;border:1px solid #65a30d;padding:10px;border-radius:10px;margin:12px 0}
 .error{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:12px 0}
 @media(max-width:600px){h1{font-size:22px}.wrap{padding:12px}.card{padding:14px}.minimap{height:160px}.resultsmap{height:220px}}
-.dist-badge{display:inline-block;background:#0369a1;color:#fff;font-weight:700;font-size:13px;border-radius:999px;padding:2px 10px;margin-left:6px;white-space:nowrap}
+.dist-badge{display:inline-block;background:#3ce8a5;color:#06231a;font-weight:700;font-size:13px;border-radius:999px;padding:2px 10px;margin-left:6px;white-space:nowrap}
 .rc-top{display:flex;gap:12px}
 .rc-photo{flex:0 0 96px;width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid #475569}
 .rc-body{flex:1;min-width:0}
-.rc-stars{color:#facc15;letter-spacing:1px;font-size:14px;margin:2px 0}
-.rc-stars .rc-count{color:#94a3b8;letter-spacing:0}
-.map-toggle{background:none;border:1px solid #475569;color:#e2e8f0;border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer;min-height:36px}
+.rc-stars{color:#f5b93f;letter-spacing:1px;font-size:14px;margin:2px 0}
+.rc-stars .rc-count{color:#9db8b0;letter-spacing:0}
+.map-toggle{background:none;border:1px solid #2c4a44;color:#eef7f3;border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer;min-height:36px}
 html.hide-resultsmap .resultsmap{display:none}
+.hero{position:relative;border-radius:20px;overflow:hidden;padding:26px 24px;margin:14px 0 20px;background:linear-gradient(115deg,#0b2a3a 0%,#0d3a3f 45%,#0a2733 100%);border:1px solid rgba(110,231,183,.16);display:flex;gap:18px;align-items:center}
+.hero:before{content:"";position:absolute;inset:0;background:radial-gradient(600px 200px at 85% 0%,rgba(60,232,165,.16),transparent 60%),radial-gradient(500px 220px at 10% 110%,rgba(56,189,248,.12),transparent 60%)}
+.hero>*{position:relative}
+.hero h1{margin:0;font-size:30px;line-height:1.15}
+.hero-greet{color:#eef7f3;font-weight:600}
+.hero-name{color:#55eeb2;display:block;font-weight:800}
+.hero-sub{color:#cfe0da;margin:8px 0 0;font-size:16px}
+.hero-avatar img{width:84px;height:84px;border-radius:50%;object-fit:cover;border:3px solid rgba(60,232,165,.5);display:block}
+.home-grid{display:grid;grid-template-columns:1.14fr 1fr 1fr;gap:20px;align-items:start}
+.home-grid .card{margin:0}
+.home-stack{display:flex;flex-direction:column;gap:20px;min-width:0}
+.home-stack .card{margin:0}
+@media(max-width:1020px){.home-grid{grid-template-columns:1fr 1fr}.home-stack{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}}
+@media(max-width:680px){.home-grid{grid-template-columns:1fr}.home-stack{grid-template-columns:1fr}.hero{padding:20px 16px}.hero h1{font-size:24px}.brand-logo img{height:32px}}
+@media(max-width:1180px){.topnav{display:none}}
+.loc-card{background:linear-gradient(155deg,#10503f,#0b3538 52%,#0a2733);border:1px solid rgba(110,231,183,.2)}
+.loc-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.loc-head h2{margin:0}
+.active-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #3ce8a5;border-radius:999px;padding:4px 12px;font-size:13px;font-weight:700;color:#3ce8a5;white-space:nowrap}
+.active-pill .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.loc-place{font-size:24px;font-weight:800;margin:12px 0 4px}
+.loc-actions{display:flex;gap:10px;margin-top:12px}
+.ghost-btn{flex:1;background:transparent;border:1px solid rgba(110,231,183,.4);color:#eef7f3;border-radius:10px;padding:10px 12px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;text-align:center;min-height:44px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
+.ghost-btn:hover{border-color:#3ce8a5}
+.qa-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.qa-tile{background:#12303c;border:1px solid rgba(110,231,183,.14);border-radius:15px;min-height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-decoration:none;color:#eef7f3;font-weight:700;position:relative;padding:8px 4px;text-align:center}
+.qa-tile .e{font-size:26px}
+.qa-tile:hover{border-color:#3ce8a5}
+.qa-tile .msgdot{position:absolute;top:8px;right:8px;margin-left:0}
+.reviews-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:start}
+.reviews-grid .card{margin:0}
+@media(max-width:1020px){.reviews-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:680px){.reviews-grid{grid-template-columns:1fr}}
 /* Light theme (dark is the default) */
-html.light body{background:#f1f5f9;color:#0f172a}
+html.light body{background:#e9f2ee;color:#0c2531}
 html.light a{color:#0369a1}
-html.light .appname{color:#0369a1}
-html.light nav a,html.light .btn{background:#fff;color:#0f172a;border-color:#cbd5e1}
-html.light nav a.active{background:#0284c7;color:#fff}
-html.light .bnav{background:#fff;border-top-color:#cbd5e1}
-html.light .bnav a{color:#64748b}
-html.light .bnav a.on{color:#0284c7}
-html.light .card{background:#fff;border-color:#e2e8f0}
-html.light input,html.light select,html.light textarea{background:#fff;color:#0f172a;border-color:#cbd5e1}
+html.light nav a,html.light .btn{background:#fff;color:#0c2531;border-color:#cbd5e1}
+html.light nav a.active{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a}
+html.light .card{background:#fff;border-color:#e2e8f0;box-shadow:0 8px 24px rgba(12,37,49,.08)}
+html.light input,html.light select,html.light textarea{background:#fff;color:#0c2531;border-color:#cbd5e1}
 html.light .muted{color:#64748b}
 html.light .tag{background:#f1f5f9;border-color:#cbd5e1}
 html.light .logout_link{color:#64748b;border-color:#cbd5e1}
 html.light .flash{background:#ecfccb;border-color:#65a30d}
 html.light .error{background:#fee2e2;border-color:#ef4444}
 html.light .rc-photo{border-color:#cbd5e1}
-html.light .map-toggle{border-color:#cbd5e1;color:#0f172a}
-html.light .dist-badge{background:#0284c7}
+html.light .map-toggle{border-color:#cbd5e1;color:#0c2531}
+html.light .dist-badge{background:#1ec98a;color:#06231a}
 html.light .rc-stars .rc-count{color:#64748b}
+html.light .topbar{background:rgba(233,242,238,.92);border-bottom-color:#cbd5e1}
+html.light .topnav a{background:#fff;color:#0c2531;border-color:#cbd5e1}
+html.light .topnav a.on{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a;border-color:transparent}
+html.light .icon-btn{color:#0c2531}
+html.light .topbar-div{background:#cbd5e1}
+html.light .hero{background:linear-gradient(115deg,#d7ece4 0%,#cde8dd 45%,#e9f2ee 100%);border-color:#cbd5e1}
+html.light .hero-greet{color:#0c2531}
+html.light .hero-name{color:#0d9e6e}
+html.light .hero-sub{color:#475569}
+html.light .qa-tile{background:#f4faf7;border-color:#cbd5e1;color:#0c2531}
+html.light .qa-tile:hover{border-color:#1ec98a}
+html.light .ghost-btn{border-color:#94a3b8;color:#0c2531}
+html.light .ghost-btn:hover{border-color:#1ec98a}
+html.light .loc-card{background:linear-gradient(155deg,#0e7a5f,#0b5e50 52%,#0d4a44);color:#fff}
+html.light .loc-card h2{color:#fff}
+html.light .loc-card .muted{color:#d1fae5}
+html.light .loc-card a{color:#a7f3d0}
+html.light .loc-card .ghost-btn{color:#fff;border-color:rgba(255,255,255,.5)}
 """
 
 # Auto-fills the city when an airport code is typed on the Check-In form.
@@ -1325,7 +1378,7 @@ LOCMAP_JS = """
 </script>
 """
 
-LOCMAP_HTML = """<div class="card"><h2>My location</h2>
+LOCMAP_HTML = """<div class="card"><h2>📍 My Location</h2>
       <p class="muted">Show your phone\u2019s current location on a map. One-time fix \u2014 your coordinates stay on your phone and are never stored.</p>
       <p><button type="button" id="locmap_btn">Show my location on a map</button></p>
       <p class="muted" id="locmap_msg"></p>
@@ -1471,50 +1524,19 @@ CITY_AIRPORTS_JS = """<script>
 def page(title, user, body, flash=None, error=None):
     msg = f'<div class="flash">{flash}</div>' if flash else ""
     err = f'<div class="error">{error}</div>' if error else ""
-    chrome, after, bcls = "", "", ""
+    chrome, after, wrap_cls = "", "", "wrap"
     if user:
-        import json as _json
-        bcls = "has_bnav"
-        first = esc(user["name"].split()[0]) if user["name"] else ""
-        first_js = _json.dumps(first)
-        logout = f'<a href="{url_for("logout")}" class="logout_link">Log out</a>' if title == "Home" else ""
-        sound_btn = ('<button id="sound_toggle" onclick="pccToggleSound(this)" title="Check-in and message sounds" '
-                     'style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;line-height:1">🔔</button>')
-        theme_btn = ('<button id="theme_toggle" onclick="pccToggleTheme(this)" title="Switch light / dark" '
-                     'style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;line-height:1">☀️</button>')
-        chrome = (f'<div class="appname">BtwnFlghts</div>'
-                  f'<div class="topbar"><span class="brand" id="greet">Hello, {first}</span>{sound_btn}{theme_btn}{logout}</div>'
-                  f'<script>(function(){{var h=new Date().getHours();'
-                  f'var g=h<12?"Good morning":h<18?"Good afternoon":"Good evening";'
-                  f'document.getElementById("greet").textContent=g+", "+{first_js};}})();</script>')
-        items = [("Home", url_for("index"), "🏠"), ("Hotels", url_for("hotels"), "🛏"),
-                 ("Restaurants", url_for("restaurants"), "🍽"), ("Attractions", url_for("attractions"), "🎡"),
-                 ("Friends", url_for("friends"), "👥"), ("Messages", url_for("messages"), "💬"),
-                 ("Profile", url_for("profile"), "👤")]
-        try:
-            _unread = get_db().execute(
-                "SELECT COUNT(*) AS n FROM messages WHERE recipient_id = ? AND is_read = 0",
-                (user["id"],)).fetchone()["n"]
-        except Exception:
-            _unread = 0
-        try:
-            _pending = get_db().execute(
-                "SELECT COUNT(*) AS n FROM friend_requests WHERE to_user_id = ?",
-                (user["id"],)).fetchone()["n"]
-        except Exception:
-            _pending = 0
-        def _label(t, e):
-            badge = ""
-            if t == "Messages" and _unread:
-                badge = f' <span class="msgdot">{_unread}</span>'
-            elif t == "Friends" and _pending:
-                badge = f' <span class="msgdot">{_pending}</span>'
-            return f'<span class="e">{e}</span>{t}{badge}'
-        bnav = "".join(
-            f'<a href="{u}" class="{"on" if (t == title or (t == "Profile" and title == "My Profile")) else ""}">'
-            f'{_label(t, e)}</a>' for t, u, e in items)
-        after = (f'<nav class="bnav">{bnav}</nav>'
-                 f'{MINIMAP_JS}'
+        wrap_cls = "wrap wrap-wide" if title == "Home" else "wrap"
+        sound_btn = ('<button id="sound_toggle" class="icon-btn" onclick="pccToggleSound(this)" title="Check-in and message sounds">🔔</button>')
+        theme_btn = ('<button id="theme_toggle" class="icon-btn" onclick="pccToggleTheme(this)" title="Switch light / dark">☀️</button>')
+        avatar = _topbar_avatar(user)
+        home_on = " on" if title == "Home" else ""
+        chrome = (f'<div class="topbar">'
+                  f'<a href="{url_for("index")}" class="brand-logo"><img src="/static/logo.webp" alt="BtwnFlghts"></a>'
+                  f'<nav class="topnav"><a href="{url_for("index")}" class="{home_on.strip()}">🏠 Home</a></nav>'
+                  f'<div class="topbar-right">{sound_btn}{theme_btn}<span class="topbar-div"></span>{avatar}</div>'
+                  f'</div>')
+        after = (f'{MINIMAP_JS}'
                  '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}</script>'
                  f'{SOUND_JS}'
                  f'{RESULT_SEARCH_JS}'
@@ -1523,16 +1545,20 @@ def page(title, user, body, flash=None, error=None):
                  f'{AVATAR_JS}')
     pwa_head = ('<link rel="manifest" href="/manifest.json">'
                 '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
-                '<meta name="theme-color" content="#0f172a">'
+                '<meta name="theme-color" content="#07141f">'
                 '<meta name="mobile-web-app-capable" content="yes">'
                 '<meta name="apple-mobile-web-app-capable" content="yes">'
                 '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">')
+    fonts_head = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
+                  '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+                  '<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">')
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       {pwa_head}
+      {fonts_head}
       <title>{{{{ title }}}} - BtwnFlghts</title><style>{CSS}</style>
       <script>try{{var t=localStorage.getItem('pcc_theme');if(t==='light')document.documentElement.classList.add('light');if(localStorage.getItem('pcc_map_hidden')==='1')document.documentElement.classList.add('hide-resultsmap');}}catch(e){{}}</script></head>
-      <body class="{bcls}"><div class="wrap">{chrome}{msg}{err}{body}{after}</div></body></html>""",
+      <body><div class="{wrap_cls}">{chrome}{msg}{err}{body}{after}</div></body></html>""",
       title=title)
 
 def esc(s):
@@ -1605,6 +1631,22 @@ def _avatar_html(user_id, size=36):
                 f'style="{st}cursor:pointer" title="Tap to enlarge" onclick="showAvatar(this.src,event)">')
     return (f'<span style="display:inline-flex;align-items:center;justify-content:center;'
             f'{st}background:#334155;color:#e2e8f0;font-weight:700">{initial}</span>')
+
+
+def _topbar_avatar(user):
+    """Round profile photo (or first-initial circle) linking to My Profile."""
+    try:
+        row = get_db().execute("SELECT profile_photo FROM users WHERE id=?", (user["id"],)).fetchone()
+        photo = row["profile_photo"] if row else None
+    except Exception:
+        photo = None
+    if photo:
+        inner = f'<img src="{url_for("profile_photo", user_id=user["id"])}" alt="My Profile">'
+    else:
+        initial = esc((user["name"] or "?").strip()[:1].upper() or "?")
+        inner = f'<span class="avatar-initial">{initial}</span>'
+    return f'<a href="{url_for("profile")}" class="avatar-link" title="My Profile">{inner}</a>'
+
 
 def review_photos_html(review_id):
     rows = get_db().execute("SELECT id FROM photos WHERE review_id=? ORDER BY id", (review_id,)).fetchall()
@@ -1846,7 +1888,7 @@ def review_card(r, user):
     # Tapping a review's place name opens it in the device's own map app
     # (Apple Maps on Apple devices, Google Maps elsewhere) — at the exact
     # coordinates when known, by name + city search when not.
-    if r.get("lat") is not None and r.get("lon") is not None:
+    if r["lat"] is not None and r["lon"] is not None:
         loc_url = _directions_url(r["lat"], r["lon"], r["place_name"] or "")
     else:
         loc_url = _map_search_url(loc_query)
@@ -2688,7 +2730,8 @@ def profile_form(user):
     <form method="post"><input type="hidden" name="form" value="password">
     <label>Current password</label><input type="password" name="current_password" required autocomplete="current-password">
     <label>New password (at least 8 characters)</label><input type="password" name="new_password" required autocomplete="new-password">
-    <button type="submit">Change password</button></form></div>"""
+    <button type="submit">Change password</button></form></div>
+    <p style="text-align:center"><a href="{url_for('logout')}" class="logout_link">Log out</a></p>"""
 
 @app.route("/")
 @login_required
@@ -2697,10 +2740,34 @@ def index():
     db = get_db()
     checkin = current_checkin(user["id"])
     notes = get_flashed_messages()
-    body = (current_checkin_html(checkin)
+    try:
+        _unread = db.execute(
+            "SELECT COUNT(*) AS n FROM messages WHERE recipient_id = ? AND is_read = 0",
+            (user["id"],)).fetchone()["n"]
+    except Exception:
+        _unread = 0
+    first = esc(user["name"].split()[0]) if user["name"] else ""
+    hero = (f'<div class="hero"><div class="hero-avatar">{_avatar_html(user["id"], 84)}</div>'
+            f'<div><h1><span id="hero_greet">Good morning,</span> <span class="hero-name">{first}</span></h1>'
+            f'<p class="hero-sub">Where are you between flights today?</p></div></div>'
+            f'<script>(function(){{var h=new Date().getHours();'
+            f'var g=h<12?"Good morning":h<18?"Good afternoon":"Good evening";'
+            f'document.getElementById("hero_greet").textContent=g+", ";}})();</script>')
+    msg_badge = f' <span class="msgdot">{_unread}</span>' if _unread else ""
+    quick = (f'<div class="card"><h2>⚡ Quick Actions</h2><div class="qa-grid">'
+             f'<a class="qa-tile" href="{url_for("hotels")}"><span class="e">🛏</span>Hotels</a>'
+             f'<a class="qa-tile" href="{url_for("restaurants")}"><span class="e">🍽</span>Restaurants</a>'
+             f'<a class="qa-tile" href="{url_for("attractions")}"><span class="e">🎡</span>Attractions</a>'
+             f'<a class="qa-tile" href="{url_for("messages")}"><span class="e">💬</span>Messages{msg_badge}</a>'
+             f'</div></div>')
+    body = (hero
+            + '<div class="home-grid">'
+            + current_checkin_html(checkin)
+            + LOCMAP_HTML
+            + '<div class="home-stack">' + friends_nearby_html(db, user, checkin) + quick + '</div>'
+            + '</div>'
+            + LOCMAP_JS
             + upcoming_checkins_html(user)
-            + LOCMAP_HTML + LOCMAP_JS
-            + friends_nearby_html(db, user, checkin)
             + fbo_area_html(db, user, checkin)
             + area_reviews_html(db, user, checkin))
     return page("Home", user, body, flash=" ".join(notes) if notes else None)
@@ -2976,12 +3043,11 @@ def upcoming_checkins_html(user):
 
 def current_checkin_html(checkin):
     """Card showing the user's active check-in (hotel/restaurant places link to the review form)."""
-    checkin_btn = (f'<a href="{url_for("board")}" class="btn" style="width:auto;white-space:nowrap">'
-                   f'Locate</a>')
-    head = (f'<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">'
-            f'<h2 style="margin:0">Current Location</h2>{checkin_btn}</div>')
     if not checkin:
-        return f'<div class="card">{head}<p class="muted">No active check-in.</p></div>'
+        return (f'<div class="card loc-card"><div class="loc-head">'
+                f'<h2>📍 Airport Location</h2></div>'
+                f'<p style="color:#d1fae5">No active check-in.</p>'
+                f'<p><a href="{url_for("board")}" class="ghost-btn">Locate</a></p></div>')
     def _place_link(place, kind):
         url = (url_for("new_review") + "?" + urllib.parse.urlencode(
             {"kind": kind, "place": place,
@@ -3003,21 +3069,21 @@ def current_checkin_html(checkin):
         kind = checkin["kind"] or "hotel"
         status_lines.append(f"{_place_link(checkin['place_name'], kind)}{_REVIEW_HINT}")
         status_lines.append(_slot_checkout_form(kind, kind))
-    loc = f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}'
+    loc = f'{esc(checkin["airport_code"])} – {esc(checkin["city"])}'
     try:
         _st = checkin["state"]
     except (KeyError, IndexError):
         _st = None
     if _st:
         loc += f', {esc(_st)}'
-    status_lines.append(loc)
     status_html = "<br>".join(status_lines)
-    return f"""<div class="card">{head}
+    return f"""<div class="card loc-card"><div class="loc-head"><h2>📍 Airport Location</h2><span class="active-pill"><span class="dot"></span>Active</span></div>
+      <p class="loc-place">{loc}</p>
+      <p style="color:#d1fae5">📅 {esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
       <p><strong>{status_html}</strong></p>
-      <p class="muted">{esc(checkin['start_date'])} to {esc(checkin['end_date'] or 'open')}</p>
-      <p><a href="{url_for('edit_checkin')}">Edit location</a></p>
+      <div class="loc-actions"><a href="{url_for('edit_checkin')}" class="ghost-btn">✏️ Edit location</a><a href="{url_for('board')}" class="ghost-btn">🎯 Locate again</a></div>
       <form method="post" action="{url_for('board')}" onsubmit="return confirm('Check out of this location?')"><input type="hidden" name="action" value="checkout">
-      <button type="submit">Leaving the area</button></form></div>"""
+      <button type="submit">✈️ Leaving the area</button></form></div>"""
 
 
 def friends_nearby_html(db, user, checkin):
@@ -3032,8 +3098,15 @@ def friends_nearby_html(db, user, checkin):
                                or fc["city"].strip().lower() == checkin["city"].strip().lower()):
             nearby.append(f"{_avatar_html(fr['id'], 28)}{esc(fr['name'])} — {checkin_label(fc)}")
     nearby_html = "".join(f"<li>{n}</li>" for n in nearby) or "<li class='muted'>No friends checked in to the same area.</li>"
-    return (f'<div class="card"><h2>Friends in the same area</h2><ul>{nearby_html}</ul>'
-            f'<p><a href="{url_for("friends")}">Manage friends</a></p></div>')
+    try:
+        _pending = db.execute(
+            "SELECT COUNT(*) AS n FROM friend_requests WHERE to_user_id = ?",
+            (user["id"],)).fetchone()["n"]
+    except Exception:
+        _pending = 0
+    badge = f' <span class="msgdot">{_pending}</span>' if _pending else ""
+    return (f'<div class="card"><h2>👥 Friends in the same area</h2><ul>{nearby_html}</ul>'
+            f'<p><a href="{url_for("friends")}">Manage friends</a>{badge}</p></div>')
 
 
 def area_reviews_html(db, user, checkin):
@@ -3046,11 +3119,11 @@ def area_reviews_html(db, user, checkin):
            ORDER BY r.created_at DESC, r.id DESC LIMIT 20""",
         ((checkin["airport_code"] or "").upper(), (checkin["city"] or "").strip().lower())).fetchall()
     rev_rows = visible_reviews(rev_rows, user)
-    html = '<div class="card"><h2>Pilot reviews in this area</h2>'
+    html = '<div class="card"><h2>✏️ Pilot reviews in this area</h2>'
     if rev_rows:
         html += (f'<p class="muted">{len(rev_rows)} reviews at '
                  f'{esc(checkin["airport_code"])} · {esc(checkin["city"])}</p></div>')
-        html += "".join(review_card(r, user) for r in rev_rows)
+        html += '<div class="reviews-grid">' + "".join(review_card(r, user) for r in rev_rows) + '</div>'
     else:
         html += '<p class="muted">No pilot reviews here yet — be the first.</p></div>'
     return html
