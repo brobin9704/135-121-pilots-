@@ -1363,6 +1363,7 @@ LOCMAP_JS = """
         div.style.display='block';
         if(!map){
           map=L.map('locmap').setView([lat,lon],14);
+          div._leaflet=map;
           L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
             maxZoom:19,attribution:'\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           }).addTo(map);
@@ -1677,6 +1678,7 @@ MINIMAP_JS = """
       var lat=parseFloat(d.getAttribute('data-lat')),lon=parseFloat(d.getAttribute('data-lon'));
       if(!isFinite(lat)||!isFinite(lon))return;
       var m=L.map(d,{zoomControl:false}).setView([lat,lon],15);
+      d._leaflet=m;
       tiles(m);
       L.marker([lat,lon]).addTo(m);
       m.scrollWheelZoom.disable();
@@ -1776,6 +1778,16 @@ function pccToggleMap(){
   if(!b)return;
   if(document.documentElement.classList.contains('hide-resultsmap'))b.textContent='Show map';
 })();
+// Redraw every map after a rotation or resize (iPad landscape <-> portrait):
+// the map containers change size but Leaflet only re-renders when told to.
+function pccInvalidateMaps(){
+  document.querySelectorAll('.resultsmap,.minimap,#locmap').forEach(function(d){
+    if(d&&d._leaflet){try{d._leaflet.invalidateSize();}catch(e){}}
+  });
+}
+var _pccRsz=null;
+window.addEventListener('resize',function(){clearTimeout(_pccRsz);_pccRsz=setTimeout(pccInvalidateMaps,150);});
+window.addEventListener('orientationchange',function(){setTimeout(pccInvalidateMaps,300);});
 </script>
 """
 
