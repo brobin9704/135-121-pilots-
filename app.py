@@ -1218,7 +1218,7 @@ label{font-weight:600}.muted{color:#9db8b0}.stars{color:#f5b93f;letter-spacing:2
 .map-toggle{background:none;border:1px solid #2c4a44;color:#eef7f3;border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer;min-height:36px}
 html.hide-resultsmap .resultsmap{display:none}
 .hero{position:relative;border-radius:20px;overflow:hidden;padding:26px 24px;margin:14px 0 20px;background:linear-gradient(115deg,#0b2a3a 0%,#0d3a3f 45%,#0a2733 100%);border:1px solid rgba(110,231,183,.16);display:flex;gap:18px;align-items:center}
-.hero:before{content:"";position:absolute;inset:0;background:radial-gradient(600px 200px at 85% 0%,rgba(60,232,165,.16),transparent 60%),radial-gradient(500px 220px at 10% 110%,rgba(56,189,248,.12),transparent 60%)}
+.hero:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 52%,#07141f 98%),linear-gradient(90deg,#0b2a3a 22%,rgba(11,42,58,.35) 52%,transparent 78%),url("/static/skyline.jpg") right center/cover no-repeat}
 .hero>*{position:relative}
 .hero h1{margin:0;font-size:30px;line-height:1.15}
 .hero-greet{color:#eef7f3;font-weight:600}
@@ -1272,6 +1272,7 @@ html.light .topnav a.on{background:linear-gradient(120deg,#5df0b1,#2bd98f);color
 html.light .icon-btn{color:#0c2531}
 html.light .topbar-div{background:#cbd5e1}
 html.light .hero{background:linear-gradient(115deg,#d7ece4 0%,#cde8dd 45%,#e9f2ee 100%);border-color:#cbd5e1}
+html.light .hero:before{background:linear-gradient(180deg,transparent 52%,#e9f2ee 98%),linear-gradient(90deg,#d7ece4 20%,rgba(233,242,238,.35) 55%,transparent 80%),url("/static/skyline.jpg") right center/cover no-repeat}
 html.light .hero-greet{color:#0c2531}
 html.light .hero-name{color:#0d9e6e}
 html.light .hero-sub{color:#475569}
@@ -3406,7 +3407,7 @@ def board():
         history_html = ""
     _state_dd = state_dropdown()
     body = f"""
-      <div class="card"><h2>Check in</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
+      <div class="card"><h2>In the area</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
       <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + ' on ' + document.getElementsByName('start_date')[0].value + '?')"><input type="hidden" name="action" value="checkin">
       <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
@@ -3415,7 +3416,7 @@ def board():
       <div id="city_airports"></div>
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
-      <button type="submit">Check in</button></form></div>{AUTOFILL_JS}{FINDME_JS}{CITY_DROPDOWN_JS}{CITY_AIRPORTS_JS}
+      <button type="submit">In the area</button></form></div>{AUTOFILL_JS}{FINDME_JS}{CITY_DROPDOWN_JS}{CITY_AIRPORTS_JS}
       {upcoming_checkins_html(user)}
       {friends_nearby_html(db, user, checkin)}{area_reviews_html(db, user, checkin)}{history_html}"""
     return page("Check-In", user, body, flash=flash)
