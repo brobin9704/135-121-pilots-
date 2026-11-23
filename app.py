@@ -1843,7 +1843,13 @@ def review_card(r, user):
           <form method="post" action="{url_for('delete_review', review_id=r['id'])}" style="margin-top:6px">
           <button type="submit" style="background:#7f1d1d;width:auto;padding:8px 12px">Delete my review</button></form>"""
     loc_query = ", ".join(p for p in [r["place_name"] or "", r["city"] or ""] if p)
-    loc_url = "https://www.openstreetmap.org/search?" + urllib.parse.urlencode({"query": loc_query})
+    # Tapping a review's place name opens it in the device's own map app
+    # (Apple Maps on Apple devices, Google Maps elsewhere) — at the exact
+    # coordinates when known, by name + city search when not.
+    if r.get("lat") is not None and r.get("lon") is not None:
+        loc_url = _directions_url(r["lat"], r["lon"], r["place_name"] or "")
+    else:
+        loc_url = _map_search_url(loc_query)
     photos = review_photos_html(r["id"])
     hidden = hidden_review_ids()
     report = ""
