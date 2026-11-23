@@ -22,7 +22,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 try:
     from PIL import Image
@@ -2385,25 +2385,191 @@ def _is_admin(user):
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     return bool(admin_email) and (user["email"] or "").strip().lower() == admin_email
 
+def _to_date(value):
+    """Normalize a created_at value — SQLite text 'YYYY-MM-DD HH:MM:SS' or a
+    Postgres TIMESTAMPTZ datetime — to a UTC date, or None."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        d = value
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d.astimezone(timezone.utc).date()
+    s = str(value).strip()
+    if len(s) < 10:
+        return None
+    try:
+        return date.fromisoformat(s[:10])
+    except ValueError:
+        return None
+
+
 @app.route("/admin")
 @login_required
 def admin():
-    """Owner-only stats: registered users, check-ins, reviews, logins."""
+    """Owner-only dashboard: totals, recent activity, top places, moderation,
+    plus the user list and recent logins."""
     user = current_user()
     if not _is_admin(user):
         return page("Admin", user, '<div class="card"><p class="muted">Not available.</p></div>')
     db = get_db()
+    today = datetime.now(timezone.utc).date()
+    week_ago = today - timedelta(days=6)  # last 7 days including today
+
+    def _in_week(d):
+        return d is not None and d >= week_ago
+
     users = db.execute(
         "SELECT id, name, email, role, airline, base, aircraft, created_at, "
         "profile_photo IS NOT NULL AS has_photo FROM users ORDER BY created_at").fetchall()
-    n_checkins = db.execute("SELECT count(*) AS n FROM checkins").fetchone()["n"]
-    n_reviews = db.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"]
-    n_logins = db.execute("SELECT count(*) AS n FROM login_events").fetchone()["n"]
-    # Current check-in per user (newest current row wins).
+    checkins = db.execute("SELECT * FROM checkins").fetchall()
+    reviews = db.execute("SELECT * FROM reviews").fetchall()
+    messages = db.execute("SELECT * FROM messages").fetchall()
+    logins = db.execute("SELECT * FROM login_events").fetchall()
+    n_push = db.execute("SELECT count(*) AS n FROM push_subscriptions").fetchone()["n"]
+    n_pending_requests = db.execute("SELECT count(*) AS n FROM friend_requests").fetchone()["n"]
+    flagged = db.execute(
+        "SELECT review_id, COUNT(*) AS c FROM reports GROUP BY review_id "
+        "ORDER BY c DESC, review_id").fetchall()
+
+    # --- totals + this week ---
+    n_users_w = sum(1 for u in users if _in_week(_to_date(u["created_at"])))
+    n_checkins_w = sum(1 for c in checkins if _in_week(_to_date(c["created_at"])))
+    n_reviews_w = sum(1 for r in reviews if _in_week(_to_date(r["created_at"])))
+    n_messages_w = sum(1 for m in messages if _in_week(_to_date(m["created_at"])))
+    login_dates = [datetime.fromtimestamp(r["logged_in_at"], tz=timezone.utc).date()
+                   for r in logins]
+    n_logins_today = sum(1 for d in login_dates if d == today)
+    n_logins_w = sum(1 for d in login_dates if d >= week_ago)
+
+    # --- currently checked in ---
     current_by_user = {}
-    for c in db.execute("SELECT * FROM checkins ORDER BY created_at DESC, id DESC").fetchall():
+    for c in sorted(checkins, key=lambda c: (str(c["created_at"]), c["id"]), reverse=True):
         if c["user_id"] not in current_by_user and is_current(c):
             current_by_user[c["user_id"]] = c
+    n_current = len(current_by_user)
+
+    # --- 14-day activity (signups, check-ins, reviews per day) ---
+    days = [today - timedelta(days=i) for i in range(13, -1, -1)]
+    day_counts = {d: [0, 0, 0] for d in days}
+    for u in users:
+        d = _to_date(u["created_at"])
+        if d in day_counts:
+            day_counts[d][0] += 1
+    for c in checkins:
+        d = _to_date(c["created_at"])
+        if d in day_counts:
+            day_counts[d][1] += 1
+    for r in reviews:
+        d = _to_date(r["created_at"])
+        if d in day_counts:
+            day_counts[d][2] += 1
+    max_day = max((max(v) for v in day_counts.values()), default=0)
+
+    def _bar(h, color, label):
+        pct = (h / max_day * 100) if max_day else 0
+        return (f'<div title="{label}: {h}" style="flex:1;background:{color};'
+                f'height:{max(pct, 2) if h else 2}%;border-radius:3px 3px 0 0"></div>')
+
+    chart_cols = ""
+    for d in days:
+        u_n, c_n, r_n = day_counts[d]
+        chart_cols += (f'<div style="flex:1;display:flex;flex-direction:column;align-items:stretch;'
+                       f'justify-content:flex-end;height:110px;min-width:0">'
+                       f'<div style="display:flex;gap:2px;align-items:flex-end;height:100%">'
+                       f'{_bar(u_n, "#38bdf8", "Signups")}{_bar(c_n, "#4ade80", "Check-ins")}'
+                       f'{_bar(r_n, "#facc15", "Reviews")}</div>'
+                       f'<div class="muted" style="font-size:10px;text-align:center;margin-top:4px">'
+                       f'{d.strftime("%m/%d")}</div></div>')
+    chart = (f'<div class="card"><h2>Activity — last 14 days</h2>'
+             f'<p class="muted" style="font-size:13px">'
+             f'<span style="color:#38bdf8">■</span> Signups &nbsp;'
+             f'<span style="color:#4ade80">■</span> Check-ins &nbsp;'
+             f'<span style="color:#facc15">■</span> Reviews</p>'
+             f'<div style="display:flex;gap:4px;align-items:flex-end">{chart_cols}</div></div>')
+
+    # --- top airports by check-ins ---
+    from collections import Counter
+    top_airports = Counter(c["airport_code"] for c in checkins if c["airport_code"]).most_common(5)
+    airport_rows = "".join(
+        f"<li><strong>{esc(code)}</strong> — {n} check-in{'s' if n != 1 else ''}</li>"
+        for code, n in top_airports) or '<li class="muted">No check-ins yet.</li>'
+
+    # --- top-rated places (min 2 reviews) ---
+    place_stats = {}
+    for r in reviews:
+        key = (r["place_name"], r["kind"], r["city"] or "")
+        s = place_stats.setdefault(key, [0, 0])
+        s[0] += r["rating"]
+        s[1] += 1
+    top_places = sorted(
+        ((name, kind, city, total / n, n) for (name, kind, city), (total, n)
+         in place_stats.items() if n >= 2),
+        key=lambda t: (-t[3], -t[4]))[:5]
+    place_rows = "".join(
+        f"<li><strong>{esc(name)}</strong> ({esc(kind)} · {esc(city)}) — "
+        f"★ {avg:.1f} · {n} reviews</li>"
+        for name, kind, city, avg, n in top_places) or '<li class="muted">No place has 2+ reviews yet.</li>'
+
+    # --- needs attention: flagged reviews + pending friend requests ---
+    flagged_rows = ""
+    for f in flagged:
+        r = next((x for x in reviews if x["id"] == f["review_id"]), None)
+        if not r:
+            continue
+        hidden = " — hidden from others" if f["c"] >= 3 else ""
+        flagged_rows += (f"<li><strong>{esc(r['place_name'])}</strong> ({esc(r['kind'])} · "
+                         f"{esc(r['city'] or '')}) — {f['c']} report{'s' if f['c'] != 1 else ''}"
+                         f"{hidden}</li>")
+    attention = ""
+    if flagged_rows or n_pending_requests:
+        attention = (f'<div class="card"><h2>Needs attention</h2><ul>'
+                     f'{flagged_rows}'
+                     + (f"<li><strong>{n_pending_requests}</strong> pending friend request"
+                        f"{'s' if n_pending_requests != 1 else ''}</li>"
+                        if n_pending_requests else "")
+                     + '</ul></div>')
+    else:
+        attention = ('<div class="card"><h2>Needs attention</h2>'
+                     '<p class="muted">Nothing flagged. No pending friend requests.</p></div>')
+
+    # --- recent activity: latest signups, check-ins, reviews ---
+    events = []
+    for u in users:
+        events.append((_to_date(u["created_at"]), "Signed up", u["name"], ""))
+    for c in checkins:
+        label = f"{c['airport_code']} · {c['city']}"
+        events.append((_to_date(c["created_at"]), "Checked in",
+                       next((u["name"] for u in users if u["id"] == c["user_id"]), "?"), label))
+    for r in reviews:
+        events.append((_to_date(r["created_at"]), "Reviewed",
+                       next((u["name"] for u in users if u["id"] == r["user_id"]), "?"),
+                       f"{r['place_name']} ({r['kind']})"))
+    events = [e for e in events if e[0] is not None]
+    events.sort(key=lambda e: e[0], reverse=True)
+    activity_rows = "".join(
+        f"<li>{d.isoformat()} — <strong>{esc(kind)}</strong> · {esc(who)}"
+        + (f" — {esc(detail)}" if detail else "") + "</li>"
+        for d, kind, who, detail in events[:10]) or '<li class="muted">No activity yet.</li>'
+
+    # --- stat cards ---
+    def _stat(label, total, sub):
+        return (f'<div style="flex:1;min-width:120px;background:#0f172a;border:1px solid #334155;'
+                f'border-radius:12px;padding:14px">'
+                f'<div style="font-size:26px;font-weight:700">{total}</div>'
+                f'<div style="font-weight:600">{label}</div>'
+                f'<div class="muted" style="font-size:13px">{sub}</div></div>')
+
+    stats = (f'<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">'
+             f'{_stat("Users", len(users), f"+{n_users_w} this week")}'
+             f'{_stat("Check-ins", len(checkins), f"{n_current} checked in now · +{n_checkins_w} this week")}'
+             f'{_stat("Reviews", len(reviews), f"+{n_reviews_w} this week")}'
+             f'{_stat("Messages", len(messages), f"+{n_messages_w} this week")}'
+             f'{_stat("Logins", len(logins), f"{n_logins_today} today · +{n_logins_w} this week")}'
+             f'{_stat("Push subscribers", n_push, "devices with push enabled")}'
+             f'</div>')
+
+    # --- user list (existing) + remove photo ---
     def _checkin_text(uid):
         c = current_by_user.get(uid)
         if not c:
@@ -2412,18 +2578,22 @@ def admin():
         if c["state"]:
             label += f", {c['state']}"
         return f"checked in at {label}"
+
     def _remove_photo_form(uid):
         return (f' <form method="post" action="{url_for("admin_remove_photo", user_id=uid)}" '
                 f'style="display:inline;margin-left:8px">'
                 f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px" onclick="return confirm(\'Remove this profile photo?\')">'
                 f'Remove photo</button></form>')
+
     rows = "".join(
         f"<li>{_avatar_html(u['id'], 28)}{esc(u['name'])} — {esc(u['email'])} "
         f"({esc(u['role'] or 'pilot').title()} · {esc(u['airline'])} · {esc(u['base'])} · {esc(u['aircraft'])}) "
         f"<span class='muted'>joined {esc(str(u['created_at'] or ''))}</span>"
         f"{_remove_photo_form(u['id']) if u['has_photo'] else ''}</li>"
         for u in users)
-    # Every login, most recent first, 20 per page.
+
+    # --- every login, most recent first, 20 per page ---
+    n_logins = len(logins)
     per_page = 20
     total_pages = max(1, (n_logins + per_page - 1) // per_page)
     logins_page = request.args.get("logins_page", 1, type=int) or 1
@@ -2447,11 +2617,15 @@ def admin():
         nav += f'<a href="{url_for("admin", logins_page=logins_page + 1)}">Next →</a>'
     paging = (f'<p>Showing {first}–{last} of {n_logins} logins · '
               f'Page {logins_page} of {total_pages}</p>{nav}')
-    body = (f'<div class="card"><h2>App stats</h2>'
-            f'<p><strong>{len(users)}</strong> registered users · '
-            f'<strong>{n_checkins}</strong> check-ins · <strong>{n_reviews}</strong> reviews · '
-            f'<strong>{n_logins}</strong> logins recorded</p>'
-            f'<ul>{rows}</ul></div>'
+
+    body = (f'<h2 style="margin:4px 0 0">Admin dashboard</h2>{stats}{chart}'
+            f'<div style="display:flex;gap:12px;flex-wrap:wrap">'
+            f'<div class="card" style="flex:1;min-width:260px"><h2>Top airports</h2><ul>{airport_rows}</ul></div>'
+            f'<div class="card" style="flex:1;min-width:260px"><h2>Top-rated places</h2><ul>{place_rows}</ul></div>'
+            f'</div>'
+            f'{attention}'
+            f'<div class="card"><h2>Recent activity</h2><ul>{activity_rows}</ul></div>'
+            f'<div class="card"><h2>Users ({len(users)})</h2><ul>{rows}</ul></div>'
             f'<div class="card"><h2>Recent logins</h2>'
             f'<p class="muted">Every login, most recent first, 20 at a time. Logins are recorded from the Nov 8 update onward; logins before it were not tracked.</p>'
             f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul>{paging}</div>')
