@@ -1241,8 +1241,8 @@ html.hide-resultsmap .resultsmap{display:none}
 .loc-actions{display:flex;gap:10px;margin-top:12px}
 .ghost-btn{flex:1;background:transparent;border:1px solid rgba(140,200,255,.4);color:#f2f8ff;border-radius:10px;padding:10px 12px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;text-align:center;min-height:44px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
 .ghost-btn:hover{border-color:#4fc3ff}
-.qa-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.qa-tile{background:rgba(6,34,64,.82);border:1px solid rgba(140,200,255,.22);border-radius:15px;min-height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-decoration:none;color:#f2f8ff;font-weight:700;position:relative;padding:8px 4px;text-align:center}
+.qa-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.qa-tile{background:rgba(6,34,64,.82);border:1px solid rgba(140,200,255,.22);border-radius:15px;min-height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-decoration:none;color:#f2f8ff;font-weight:700;position:relative;padding:8px 4px;text-align:center;min-width:0;overflow-wrap:break-word}
 .qa-tile .e{font-size:26px}
 .qa-tile:hover{border-color:#4fc3ff}
 .qa-tile .msgdot{position:absolute;top:8px;right:8px;margin-left:0}
