@@ -2292,6 +2292,10 @@ def login_page(error=None):
       label{{font-weight:600;font-size:14px}}
       input{{width:100%;padding:11px;margin:6px 0 14px;border-radius:10px;border:1px solid #475569;
         background:#0b1322;color:#e2e8f0;box-sizing:border-box;font-size:16px}}
+      .pw_wrap{{position:relative}}
+      .pw_wrap input{{padding-right:64px}}
+      .pw_toggle{{position:absolute;right:4px;top:6px;width:auto;background:none;border:0;color:#7dd3fc;
+        font-size:13px;font-weight:600;padding:11px 10px;cursor:pointer}}
       button{{width:100%;background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;border:0;padding:13px;
         border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}}
       .reg{{text-align:center;margin:14px 0 0;font-size:14px;color:#cbd5e1}}
@@ -2307,12 +2311,12 @@ def login_page(error=None):
       <p class="tag">BtwnFlghts is where pilots share real layover intel. Check in at your overnight, leave your honest opinion of the hotels and restaurants nearby, and read what other pilots thought before you book, eat, or sleep.</p>
       {err}<form method="post" id="login_form">
       <label>Email</label><input type="email" name="email" required autocomplete="email">
-      <label>Password</label><input type="password" name="password" required autocomplete="current-password">
+      <label>Password</label><div class="pw_wrap"><input type="password" name="password" id="pw" required autocomplete="current-password"><button type="button" class="pw_toggle" id="pw_toggle">Show</button></div>
       <button type="button" id="login_btn">Log in</button></form>
       <p class="reg"><a href="/forgot-password">Forgot password?</a></p>
       <p class="reg">No account yet? <a href="/register">Register</a></p></div>
       {ATC_AUDIO_HTML}<script>{ATC_AUDIO_JS}</script>
-      <script>var _lf=document.getElementById('login_form');var _lb=document.getElementById('login_btn');_lf.addEventListener('keydown',function(e){{if(e.key==='Enter'){{e.preventDefault();}}}});_lb.addEventListener('click',function(){{if(_lf.checkValidity()){{_lb.disabled=true;_lf.submit();}}else{{_lf.reportValidity();}}}});</script>
+      <script>var _lf=document.getElementById('login_form');var _lb=document.getElementById('login_btn');_lf.addEventListener('keydown',function(e){{if(e.key==='Enter'){{e.preventDefault();}}}});_lb.addEventListener('click',function(){{if(_lf.checkValidity()){{_lb.disabled=true;_lf.submit();}}else{{_lf.reportValidity();}}}});var _pw=document.getElementById('pw');var _pt=document.getElementById('pw_toggle');_pt.addEventListener('click',function(){{var show=_pw.type==='password';_pw.type=show?'text':'password';_pt.textContent=show?'Hide':'Show';}});</script>
       </body></html>""")
 
 @app.route("/logout")
