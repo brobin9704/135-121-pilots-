@@ -1181,6 +1181,7 @@ nav a.active{background:#0369a1}
 .appname{text-align:center;font-size:11px;letter-spacing:2px;color:#7dd3fc;font-weight:700;padding:calc(10px + env(safe-area-inset-top)) 4px 0}
 .minimap{height:180px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
 .resultsmap{height:260px;border-radius:10px;margin:10px 0;position:relative;z-index:0}
+#locmap{position:relative;z-index:0}
 .you-pin-wrap{background:none;border:none}
 .you-pin-shape{position:relative;width:24px;height:24px;background:#ef4444;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .you-pin-shape:after{content:"";position:absolute;left:6px;top:6px;width:8px;height:8px;background:#fff;border-radius:50%}
