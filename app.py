@@ -1169,7 +1169,7 @@ def places_at_checkin(checkin, radius_miles, kind, tail_timeout=30):
 # ---------------------------------------------------------------- rendering
 CSS = """
 html{-webkit-text-size-adjust:100%}
-body{font-family:'Manrope',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#07141f;color:#eef7f3;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+body{font-family:'Manrope',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0086E8;color:#eef7f3;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 h1,h2,h3{font-family:'Poppins','Manrope',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 img{max-width:100%;height:auto}
 a{color:#5eeab3}.wrap{max-width:760px;margin:0 auto;padding:16px}.wrap-wide{max-width:1080px}
@@ -1183,7 +1183,7 @@ nav a.active{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a;bo
 .you-pin-wrap{background:none;border:none}
 .you-pin-shape{position:relative;width:24px;height:24px;background:#ef4444;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .you-pin-shape:after{content:"";position:absolute;left:6px;top:6px;width:8px;height:8px;background:#fff;border-radius:50%}
-.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:10px 4px;background:rgba(7,20,31,.9);backdrop-filter:blur(8px);border-bottom:1px solid rgba(110,231,183,.14)}
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:10px 4px;background:#07141f;backdrop-filter:blur(8px);border-bottom:1px solid rgba(110,231,183,.14)}
 .brand-logo{display:inline-flex;align-items:center;flex:0 0 auto}
 .brand-logo img{height:40px;width:auto;display:block;border-radius:10px}
 .topnav{margin:0 auto;display:flex;gap:8px}
@@ -1192,9 +1192,9 @@ nav a.active{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a;bo
 .topbar-right{margin-left:auto;display:flex;align-items:center;gap:6px}
 .icon-btn{background:none;border:none;font-size:18px;cursor:pointer;padding:8px;line-height:1;color:#eef7f3}
 .topbar-div{width:1px;height:28px;background:rgba(110,231,183,.2);margin:0 4px}
-.avatar-link{display:inline-flex;border-radius:50%}
-.avatar-link img{width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;border:2px solid rgba(60,232,165,.45)}
-.avatar-link .avatar-initial{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#1d4a3a;color:#3ce8a5;font-weight:700;font-size:18px;border:2px solid rgba(60,232,165,.45)}
+.avatar-link{display:inline-flex;align-items:center;flex:0 0 auto;border-radius:50%;line-height:0}
+.avatar-link img{width:40px;height:40px;box-sizing:border-box;border-radius:50%;object-fit:cover;object-position:center;display:block;border:2px solid rgba(60,232,165,.45)}
+.avatar-link .avatar-initial{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;box-sizing:border-box;border-radius:50%;background:#1d4a3a;color:#3ce8a5;font-weight:700;font-size:18px;border:2px solid rgba(60,232,165,.45)}
 .logout_link{color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:8px 14px;min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
 .msgdot{display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:999px;background:#e5484d;color:#fff;font-size:10px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:middle}
 .card{background:#102330;border:1px solid rgba(110,231,183,.16);border-radius:20px;padding:16px;margin:12px 0;box-shadow:0 18px 40px rgba(0,0,0,.35)}
@@ -1224,13 +1224,13 @@ html.hide-resultsmap .resultsmap{display:none}
 .hero-greet{color:#eef7f3;font-weight:600}
 .hero-name{color:#55eeb2;display:block;font-weight:800}
 .hero-sub{color:#cfe0da;margin:8px 0 0;font-size:16px}
-.hero-avatar img{width:84px;height:84px;border-radius:50%;object-fit:cover;border:3px solid rgba(60,232,165,.5);display:block}
+.hero-avatar img{width:84px;height:84px;box-sizing:border-box;border-radius:50%;object-fit:cover;object-position:center;border:3px solid rgba(60,232,165,.5);display:block}
 .home-grid{display:grid;grid-template-columns:1.14fr 1fr 1fr;gap:20px;align-items:start}
 .home-grid .card{margin:0}
 .home-stack{display:flex;flex-direction:column;gap:20px;min-width:0}
 .home-stack .card{margin:0}
 @media(max-width:1020px){.home-grid{grid-template-columns:1fr 1fr}.home-stack{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}}
-@media(max-width:680px){.home-grid{grid-template-columns:1fr}.home-stack{grid-template-columns:1fr}.hero{padding:20px 16px}.hero h1{font-size:24px}.brand-logo img{height:32px}}
+@media(max-width:680px){.home-grid{grid-template-columns:1fr}.home-stack{grid-template-columns:1fr}.hero{padding:20px 16px}.hero h1{font-size:24px}.brand-logo img{height:32px}.avatar-link img,.avatar-link .avatar-initial{width:32px;height:32px;font-size:15px}.hero-avatar img{max-width:64px;max-height:64px}}
 @media(max-width:1180px){.topnav{display:none}}
 .loc-card{background:linear-gradient(155deg,#10503f,#0b3538 52%,#0a2733);border:1px solid rgba(110,231,183,.2)}
 .loc-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
@@ -1252,7 +1252,7 @@ html.hide-resultsmap .resultsmap{display:none}
 @media(max-width:1020px){.reviews-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:680px){.reviews-grid{grid-template-columns:1fr}}
 /* Light theme (dark is the default) */
-html.light body{background:#e9f2ee;color:#0c2531}
+html.light body{background:#0086E8;color:#0c2531}
 html.light a{color:#0369a1}
 html.light nav a,html.light .btn{background:#fff;color:#0c2531;border-color:#cbd5e1}
 html.light nav a.active{background:linear-gradient(120deg,#5df0b1,#2bd98f);color:#06231a}
@@ -1545,7 +1545,7 @@ def page(title, user, body, flash=None, error=None):
                  f'{AVATAR_JS}')
     pwa_head = ('<link rel="manifest" href="/manifest.json">'
                 '<link rel="apple-touch-icon" href="/apple-touch-icon.png">'
-                '<meta name="theme-color" content="#07141f">'
+                '<meta name="theme-color" content="#0086E8">'
                 '<meta name="mobile-web-app-capable" content="yes">'
                 '<meta name="apple-mobile-web-app-capable" content="yes">'
                 '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">')
