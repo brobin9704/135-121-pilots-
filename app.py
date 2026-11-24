@@ -1,6 +1,8 @@
 """
 BtwnFlghts - deployable version.
 
+© 2026 BtwnFlghts. All rights reserved.
+
 Check-in-only location model:
   Location is ONLY the airport code and city a pilot types when checking in.
   The optional "Find me" button takes one tap-initiated GPS fix to suggest the
@@ -1862,7 +1864,7 @@ def page(title, user, body, flash=None, error=None):
       {fonts_head}
       <title>{{{{ title }}}} - BtwnFlghts</title><style>{CSS}</style>
       <script>try{{var t=localStorage.getItem('pcc_theme');if(t==='light')document.documentElement.classList.add('light');if(localStorage.getItem('pcc_map_hidden')==='1')document.documentElement.classList.add('hide-resultsmap');}}catch(e){{}}</script>{TZ_JS}</head>
-      <body><div class="{wrap_cls}">{chrome}{msg}{err}{body}{after}</div></body></html>""",
+      <body><div class="{wrap_cls}">{chrome}{msg}{err}{body}{after}<div style="text-align:center;color:#7d94b0;font-size:12px;padding:20px 0 28px">© 2026 BtwnFlghts</div></div></body></html>""",
       title=title)
 
 def esc(s):
@@ -2721,6 +2723,7 @@ def login_page(error=None):
       button{{width:100%;background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;border:0;padding:13px;
         border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}}
       .reg{{text-align:center;margin:14px 0 0;font-size:14px;color:#cbd5e1}}
+      .copy{{text-align:center;margin:18px 0 0;font-size:12px;color:#94a3b8}}
       .reg a{{color:#7dd3fc}}
       .error{{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:0 0 14px}}
       .atc_toggle{{position:fixed;top:12px;right:12px;z-index:5;width:auto;background:rgba(13,20,38,.7);
@@ -2736,7 +2739,8 @@ def login_page(error=None):
       <label>Password</label><div class="pw_wrap"><input type="password" name="password" id="pw" required autocomplete="current-password"><button type="button" class="pw_toggle" id="pw_toggle">Show</button></div>
       <button type="button" id="login_btn">Log in</button></form>
       <p class="reg"><a href="/forgot-password">Forgot password?</a></p>
-      <p class="reg">No account yet? <a href="/register">Register</a></p></div>
+      <p class="reg">No account yet? <a href="/register">Register</a></p>
+      <p class="copy">© 2026 BtwnFlghts</p></div>
       {ATC_AUDIO_HTML}<script>{ATC_AUDIO_JS}</script>
       <script>var _lf=document.getElementById('login_form');var _lb=document.getElementById('login_btn');_lf.addEventListener('keydown',function(e){{if(e.key==='Enter'){{e.preventDefault();}}}});_lb.addEventListener('click',function(){{if(_lf.checkValidity()){{_lb.disabled=true;_lf.submit();}}else{{_lf.reportValidity();}}}});var _pw=document.getElementById('pw');var _pt=document.getElementById('pw_toggle');_pt.addEventListener('click',function(){{var show=_pw.type==='password';_pw.type=show?'text':'password';_pt.textContent=show?'Hide':'Show';}});</script>
       </body></html>""")

@@ -143,3 +143,7 @@ When someone sends a friend request, the recipient gets an email with a link to 
   ("open to all pilots").
 - This repository is code to deploy. It is not itself a live hosted
   service for other pilots until you deploy it with Option A or B above.
+
+## Copyright
+
+© 2026 BtwnFlghts. All rights reserved.
