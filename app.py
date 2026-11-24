@@ -440,8 +440,6 @@ def init_db():
             # Widen the kind CHECK to include 'fbo' and 'attraction' (auto-named reviews_kind_check).
             cur.execute("ALTER TABLE reviews DROP CONSTRAINT IF EXISTS reviews_kind_check")
             cur.execute("ALTER TABLE reviews ADD CONSTRAINT reviews_kind_check CHECK (kind IN ('hotel','restaurant','fbo','attraction'))")
-            # Clear FBO search caches poisoned by failed searches during the OSM outage.
-            cur.execute("DELETE FROM search_cache WHERE kind = 'fbo'")
             cur.execute("UPDATE checkins SET hotel_place = place_name WHERE kind='hotel' AND place_name IS NOT NULL AND hotel_place IS NULL")
             cur.execute("UPDATE checkins SET restaurant_place = place_name WHERE kind='restaurant' AND place_name IS NOT NULL AND restaurant_place IS NULL")
             conn.commit()
