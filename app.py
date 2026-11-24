@@ -3201,12 +3201,35 @@ def admin():
             f'<div class="card" style="flex:1;min-width:260px"><h2>Top-rated places</h2><ul>{place_rows}</ul></div>'
             f'</div>'
             f'{attention}'
+            f'<div class="card"><h2>Website traffic</h2><p><a href="{url_for("admin_traffic")}">View traffic report</a> '
+            f'— visits, pages, referrers and browsers from the server logs (GoAccess, refreshed every 30 minutes).</p></div>'
             f'<div class="card"><h2>Recent activity</h2><ul>{activity_rows}</ul></div>'
             f'<div class="card"><h2>Users ({len(users)})</h2><ul>{rows}</ul></div>'
             f'<div class="card"><h2>Recent logins</h2>'
             f'<p class="muted">Every login, most recent first, 20 at a time. Logins are recorded from the Nov 8 update onward; logins before it were not tracked.</p>'
             f'<ul>{login_rows or "<li class=\"muted\">No logins recorded yet.</li>"}</ul>{paging}</div>')
     return page("Admin", user, body)
+
+@app.route("/admin/traffic")
+@login_required
+def admin_traffic():
+    """Owner-only: serve the GoAccess website-traffic report generated on the
+    server from the nginx access logs (refreshed every 30 minutes by
+    /usr/local/bin/btwnflghts-traffic.sh on the VPS)."""
+    user = current_user()
+    if not _is_admin(user):
+        return page("Admin", user, '<div class="card"><p class="muted">Not available.</p></div>')
+    path = os.environ.get("TRAFFIC_REPORT_PATH", "/opt/btwnflghts/traffic-report.html")
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            report = f.read()
+    except OSError:
+        return page("Website traffic", user,
+                    '<div class="card"><h2>Website traffic</h2>'
+                    '<p class="muted">The traffic report has not been generated yet. '
+                    'It is rebuilt from the server logs every 30 minutes — '
+                    'check back shortly.</p></div>')
+    return Response(report, mimetype="text/html")
 
 @app.route("/admin/remove-photo/<int:user_id>", methods=["POST"])
 @login_required
