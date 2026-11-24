@@ -1268,6 +1268,50 @@ label{font-weight:600}.muted{color:#a9cdec}.stars{color:#f5b93f;letter-spacing:2
 .search-empty{border:1px dashed rgba(140,200,255,.4);border-radius:12px;padding:18px 14px;text-align:center;margin:12px 0 4px}
 .search-empty p{margin:4px 0}
 input:disabled{opacity:.55}
+/* Mini-card system ported from the search-results-redesign rendition
+   ("the same system, everywhere else"): Friends, Messages, Check-in and
+   FBOs share one card shell, one white search-box style, and one row
+   style. Values copied from the rendition (.mini / .fake-search /
+   .person-row / .airport-result / .fbo-row). */
+.mini{background:rgba(8,42,78,.86);border:1px solid rgba(120,190,255,.20);border-radius:18px;padding:18px}
+.mini-search{display:flex;align-items:center;background:#fff;border:1px solid rgba(120,190,255,.35);border-radius:12px;min-height:46px;margin:6px 0 12px}
+.mini-search input{flex:1;min-width:0;background:transparent;border:0;color:#0f172a;margin:0;padding:12px 14px;font-size:16px}
+.mini-search input::placeholder{color:#94a3b8}
+.mini-count{color:#64748b;font-size:13px;font-weight:700;padding:0 12px 0 4px;white-space:nowrap}
+.person-list{list-style:none;margin:0;padding:0}
+.person-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(120,190,255,.14);min-width:0}
+.person-row:first-child{border-top:0}
+.p-ava{flex:0 0 auto;line-height:0}
+.p-main{flex:1;min-width:0}
+.p-name{font-size:15px;font-weight:800;line-height:1.3}
+.p-name a{color:#f2f8ff;text-decoration:none}
+.p-meta{color:#a9cdec;font-size:12.5px;line-height:1.45;overflow-wrap:break-word}
+.p-act{display:flex;gap:8px;align-items:center;margin:0;flex:0 0 auto}
+.p-btn{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border:0;border-radius:12px;padding:10px 18px;min-height:42px;font-size:15px;font-weight:700;cursor:pointer;width:auto;box-sizing:border-box;text-decoration:none}
+.p-btn-ghost{background:transparent;border:1px solid rgba(140,200,255,.45);color:#a9cdec}
+.p-btn-danger{background:transparent;border:1px solid rgba(239,68,68,.55);color:#fca5a5}
+.p-empty{padding:10px 0}
+.code-search input{background:#fff;color:#04182e;font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:20px;border:1px solid rgba(120,190,255,.35);border-radius:12px;min-height:52px}
+.airport-result{border:1px solid rgba(52,211,153,.45);background:rgba(52,211,153,.08);border-radius:14px;padding:14px 16px;margin:4px 0 12px}
+.ar-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.ar-code{font-size:24px;font-weight:800;letter-spacing:.1em}
+.ar-name{font-weight:700;margin-top:2px}
+.ar-meta{color:#a9cdec;font-size:13px;margin-top:2px}
+.check-badge{display:inline-flex;align-items:center;background:rgba(52,211,153,.16);border:1px solid rgba(52,211,153,.5);color:#6ee7b7;border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.ap-chip{display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid rgba(120,190,255,.3);border-radius:12px;background:rgba(79,195,255,.10);color:#f2f8ff;font-size:15px;font-weight:400;cursor:pointer;box-sizing:border-box;min-height:44px}
+.ap-chip strong{color:#4fc3ff}
+.fbo-row{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid rgba(120,190,255,.14)}
+.fbo-row:first-child{border-top:0}
+.fbo-main{flex:1;min-width:0}
+.fbo-name{font-size:15px;font-weight:800;line-height:1.3}
+.fbo-name a{color:#f2f8ff;text-decoration:none}
+.fbo-logo{height:22px;max-width:110px;object-fit:contain;vertical-align:middle;margin-left:8px;background:rgba(255,255,255,.92);border-radius:4px;padding:2px 4px}
+.fbo-meta{color:#a9cdec;font-size:12.5px;line-height:1.45;margin-top:2px;overflow-wrap:break-word}
+.fbo-meta a{color:#a9cdec}
+.fbo-tags{margin-top:6px}
+.fbo-addrev{margin-top:6px;font-size:13px}
+.phone-link{flex:0 0 auto;color:#4fc3ff;font-weight:700;font-size:14px;text-decoration:none;white-space:nowrap;padding-top:2px}
+@media(max-width:560px){.person-row{flex-wrap:wrap;row-gap:8px}.p-main{flex:1 1 150px}.p-act{margin-left:auto}}
 .map-toggle{background:none;border:1px solid rgba(140,200,255,.4);color:#f2f8ff;border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer;min-height:44px}
 html.hide-resultsmap .resultsmap{display:none}
 .hero{position:relative;border-radius:20px;overflow:hidden;padding:26px 24px;margin:14px 0 20px;background:rgba(8,42,78,.82);border:1px solid rgba(140,200,255,.22);display:flex;gap:18px;align-items:center}
@@ -1346,6 +1390,24 @@ html.light .xc-quote{color:#334155;border-left-color:rgba(2,132,199,.4)}
 html.light .xc-quote-by{color:#64748b}
 html.light .xc-icon{background:#f1f5f9;border-color:#cbd5e1;color:#0284c7}
 html.light .xc-addrev{border-color:#cbd5e1;color:#0369a1}
+html.light .mini{background:#fff;border-color:#e2e8f0}
+html.light .mini-search{border-color:#cbd5e1}
+html.light .person-row{border-top-color:#e2e8f0}
+html.light .p-name a{color:#0c2531}
+html.light .p-meta{color:#64748b}
+html.light .p-btn-ghost{border-color:#94a3b8;color:#475569}
+html.light .p-btn-danger{border-color:rgba(220,38,38,.5);color:#dc2626}
+html.light .code-search input{border-color:#cbd5e1;color:#0c2531}
+html.light .airport-result{border-color:rgba(5,150,105,.5);background:rgba(5,150,105,.07)}
+html.light .ar-meta{color:#64748b}
+html.light .check-badge{background:rgba(5,150,105,.12);border-color:rgba(5,150,105,.5);color:#047857}
+html.light .ap-chip{background:#f1f5f9;border-color:#cbd5e1;color:#0c2531}
+html.light .ap-chip strong{color:#0284c7}
+html.light .fbo-row{border-top-color:#e2e8f0}
+html.light .fbo-name a{color:#0c2531}
+html.light .fbo-meta{color:#64748b}
+html.light .fbo-meta a{color:#64748b}
+html.light .phone-link{color:#0284c7}
 html.light .topbar{background:rgba(233,242,238,.92);border-bottom-color:#cbd5e1}
 html.light .topnav a{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-color:transparent}
 html.light .topnav a.on{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-color:transparent}
@@ -1488,7 +1550,7 @@ FINDME_JS = """<script>
           say('Airports near you (tap one):');
           var html='<div style="margin-top:8px">';
           aps.forEach(function(a){
-            html+='<button type="button" class="ap-pick" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-size:15px"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
+            html+='<button type="button" class="ap-pick ap-chip" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
           });
           html+='</div>';
           list.innerHTML=html;
@@ -1529,7 +1591,7 @@ CITY_DROPDOWN_JS = """<script>
     if(!matches.length){ suggEl.innerHTML=''; return; }
     var html='';
     matches.forEach(function(c){
-      html+='<button type="button" class="city-opt" data-city="'+c.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-size:15px;margin:4px 0">'+c+'</button>';
+      html+='<button type="button" class="city-opt ap-chip" data-city="'+c.replace(/"/g,'&quot;')+'">'+c+'</button>';
     });
     suggEl.innerHTML=html;
     suggEl.querySelectorAll('.city-opt').forEach(function(b){
@@ -1584,7 +1646,7 @@ CITY_AIRPORTS_JS = """<script>
         }
         var html='<p class="muted" style="margin:8px 0 4px">Airports near '+city+(state?', '+state:'')+' (tap one):</p>';
         aps.forEach(function(a){
-          html+='<button type="button" class="city-ap" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'" style="display:block;width:100%;text-align:left;margin:4px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a;font-size:15px"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
+          html+='<button type="button" class="city-ap ap-chip" data-code="'+a.code+'" data-city="'+a.city.replace(/"/g,'&quot;')+'"><strong>'+a.code+'</strong> &middot; '+a.name+' &middot; '+a.distance_mi+' mi</button>';
         });
         box.innerHTML=html;
         box.querySelectorAll('.city-ap').forEach(function(b){
@@ -1599,6 +1661,53 @@ CITY_AIRPORTS_JS = """<script>
   cityEl.addEventListener('input',function(){ clearTimeout(timer); timer=setTimeout(lookup,500); });
   cityEl.addEventListener('change',lookup);
   if(stateEl)stateEl.addEventListener('change',lookup);
+})();
+</script>"""
+
+# Rendition check-in design: when the typed airport code resolves, show the
+# verified airport in a green result box; the "Code · City · State agree"
+# badge appears only when the form's city and state actually match the
+# dataset values for that code. Display only — the server still verifies
+# code/city/state on submit (verify_checkin), unchanged.
+AIRPORT_RESULT_JS = """<script>
+(function(){
+  var codeEl=document.getElementById('airport_code'),cityEl=document.getElementById('city');
+  var stateEl=document.getElementById('state'),box=document.getElementById('airport_result');
+  if(!codeEl||!box)return;
+  function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+  var info=null,seq=0;
+  function render(){
+    var code=codeEl.value.trim().toUpperCase();
+    if(!info||info.code!==code){ box.innerHTML=''; return; }
+    var cityOk=!!(cityEl&&cityEl.value.trim().toLowerCase()===String(info.city||'').toLowerCase());
+    var stateOk=!!(info.state&&stateEl&&stateEl.value.trim().toUpperCase()===String(info.state).toUpperCase());
+    var badge=(cityOk&&stateOk)?'<span class="check-badge">✓ Code · City · State agree</span>':'';
+    var meta=escHtml(info.city)+(info.state?', '+escHtml(info.state):'');
+    if(cityEl&&cityEl.dataset.auto==='1')meta+=' · City & state auto-filled';
+    box.innerHTML='<div class="airport-result"><div class="ar-top"><span class="ar-code">'+escHtml(info.code)+'</span>'+badge+'</div>'
+      +'<div class="ar-name">'+escHtml(info.name)+'</div>'
+      +'<div class="ar-meta">'+meta+'</div></div>';
+  }
+  function lookup(){
+    var code=codeEl.value.trim().toUpperCase();
+    if(code.length<3){ info=null; render(); return; }
+    var my=++seq;
+    fetch('/airport-info?code='+encodeURIComponent(code)).then(function(r){return r.ok?r.json():null;}).then(function(d){
+      if(my!==seq)return;
+      info=(d&&d.code===code)?d:null;
+      render();
+      setTimeout(render,700);
+    }).catch(function(){});
+  }
+  codeEl.addEventListener('input',lookup);
+  codeEl.addEventListener('change',lookup);
+  if(cityEl){ cityEl.addEventListener('input',render); cityEl.addEventListener('change',render); }
+  if(stateEl){ stateEl.addEventListener('change',render); }
+  document.addEventListener('click',function(e){
+    var t=e.target;
+    if(t&&t.closest&&t.closest('.ap-pick,.city-ap,.city-opt'))setTimeout(lookup,60);
+  });
+  lookup();
 })();
 </script>"""
 
@@ -3264,7 +3373,7 @@ def fbo_area_html(db, user, checkin):
                 centre = (_lat, _lon, f"{_name}, {_city}")
             error = None
             save_search_cache(user["id"], "fbo", checkin, radius, centre, results)
-    html = f'<div class="card"><h2>FBOs in the area</h2>'
+    html = f'<div class="card mini"><h2>FBOs in the area</h2>'
     if results is None:
         html += '<p class="muted">Could not resolve the check-in location.</p>'
     else:
@@ -3508,16 +3617,17 @@ def board():
         history_html = ""
     _state_dd = state_dropdown()
     body = f"""
-      <div class="card"><h2>In the area</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
+      <div class="card mini"><h2>In the area</h2><p class="muted">Type the airport code — the city fills in automatically — or tap Find me for a one-time location fix. This is the only location this app uses.</p>
       <p><button type="button" id="findme">Find me</button></p><p class="muted" id="findme_msg"></p>
       <form method="post" onsubmit="return confirm('Check in at ' + document.getElementById('airport_code').value.toUpperCase() + ' / ' + document.getElementById('city').value + ' on ' + document.getElementsByName('start_date')[0].value + '?')"><input type="hidden" name="action" value="checkin">
-      <label>Airport code</label><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required>
+      <label>Airport code</label><div class="code-search"><input id="airport_code" name="airport_code" placeholder="KTUL" autocomplete="off" required></div>
+      <div id="airport_result"></div>
       <label>State</label>{_state_dd}
       <label>City</label><input name="city" id="city" placeholder="Start typing a city" autocomplete="off" required><div id="city_suggest"></div>
       <div id="city_airports"></div>
       <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
-      <button type="submit">In the area</button></form></div>{AUTOFILL_JS}{FINDME_JS}{CITY_DROPDOWN_JS}{CITY_AIRPORTS_JS}
+      <button type="submit">In the area</button></form></div>{AUTOFILL_JS}{FINDME_JS}{CITY_DROPDOWN_JS}{CITY_AIRPORTS_JS}{AIRPORT_RESULT_JS}
       {upcoming_checkins_html(user)}
       {friends_nearby_html(db, user, checkin)}{area_reviews_html(db, user, checkin)}{history_html}"""
     return page("Check-In", user, body, flash=flash)
@@ -4106,9 +4216,13 @@ def _crew_for_places(kind, names, user):
 
 
 def _fbo_results_html(kind, data, user, with_map=True):
-    """The pre-redesign results rendering, kept for FBOs only: the /fbos
-    list and the Home "FBOs in the area" card stay exactly as they were —
-    only the Hotels/Restaurants/Attractions search tabs are redesigned."""
+    """FBO list in the rendition's compact row design: name (device-map
+    link, logo where listed), a meta line with the distance FROM THE
+    CHECK-IN AIRPORT, up to 3 pilot tags, an Add review link, and a
+    tap-to-call phone link on the right. Distances here are airport-based
+    (FBO location comes from the check-in airport code), never "from you"
+    — except the legacy /fbos GPS fragment, whose centre is the phone fix
+    and whose distances really are from the phone."""
     centre, results, error, radius, place = data
     kind_label = _kind_label(kind)
     if error and not results:
@@ -4131,48 +4245,15 @@ def _fbo_results_html(kind, data, user, with_map=True):
     if markers and with_map:
         map_toggle = ('<div style="margin:4px 0"><button type="button" class="map-toggle" '
                       'id="map_toggle" onclick="pccToggleMap()">Hide map</button></div>')
-    search_html = ('<div style="margin:12px 0 4px"><input type="search" id="result_search" '
-                   'placeholder="Search by first letter" autocomplete="off" '
-                   'style="width:100%;font-size:16px;padding:10px"></div>'
+    search_html = ('<div class="mini-search"><input type="search" id="result_search" '
+                   'placeholder="Search by first letter" autocomplete="off"></div>'
                    '<p class="muted" id="result_count" style="margin:4px 0"></p>'
                    '<p class="muted" id="result_none" style="display:none">No places match.</p>')
-    cards = ""
+    code = ((place["airport_code"] or "").strip().upper() if place else "")
+    gps_basis = bool(centre and centre[2] == "your current location")
+    crew = _crew_for_places("fbo", [r["name"] for r in results], user)
+    rows = ""
     for r in results:
-        detail = ""
-        if kind == "hotel":
-            if r.get("brand") and r["brand"] != r["name"]:
-                detail = f"<div>{esc(r['brand'])}</div>"
-        elif kind == "restaurant":
-            if r.get("cuisine"):
-                detail += f"<div>{esc(r['cuisine'])}</div>"
-            if r.get("hours"):
-                detail += f"<div>{esc(r['hours'])}</div>"
-        elif kind == "fbo" and r.get("brand"):
-            detail = f"<div>{esc(r['brand'])}</div>"
-        elif r.get("atype"):
-            detail = f"<div>{esc(r['atype'])}</div>"
-        web = f'<div><a href="{esc(r["website"])}" target="_blank" rel="noopener">Website</a></div>' if r["website"] else ""
-        if r.get("address"):
-            if r.get("lat") is not None and r.get("lon") is not None:
-                durl = _directions_url(r["lat"], r["lon"], r["name"])
-                addr = (f'<div><a href="{esc(durl)}" target="_blank" '
-                        f'rel="noopener">{esc(r["address"])}</a></div>')
-            else:
-                addr = f"<div>{esc(r['address'])}</div>"
-        else:
-            addr = ""
-        phone = (f"<div><a href=\"tel:{esc(r['phone'])}\">{esc(r['phone'])}</a></div>"
-                 if r.get("phone") else "")
-        rating_html = ""
-        if r.get("rating") is not None:
-            cnt = (f' <span class="rc-count">({r["review_count"]} reviews)</span>'
-                   if r.get("review_count") else "")
-            rating_html = f'<div class="rc-stars">★ {r["rating"]}{cnt}</div>'
-        photo_html = ""
-        if r.get("image"):
-            photo_html = (f'<img class="rc-photo" src="{esc(r["image"])}" alt="" loading="lazy">')
-        elif r.get("logo"):
-            photo_html = (f'<img class="rc-photo" src="{esc(r["logo"])}" alt="" loading="lazy">')
         # Tapping a result name opens the place in the device's own map app
         # (Apple Maps on Apple devices, Google Maps elsewhere) — at the exact
         # coordinates when known, by name + city search when not.
@@ -4180,30 +4261,47 @@ def _fbo_results_html(kind, data, user, with_map=True):
             name_url = _directions_url(r["lat"], r["lon"], r["name"])
         else:
             name_url = _map_search_url(f"{r['name']}, {place['city']}")
-        if kind == "attraction":
-            # No reviews for attractions — link the name to the device map.
-            name_html = (f'<a href="{esc(name_url)}" target="_blank" rel="noopener">'
-                         f'<strong>{esc(r["name"])}</strong></a>')
-            add = (url_for("new_review") + "?" + urllib.parse.urlencode(
-                {"kind": "attraction", "place": r["name"], "airport": place["airport_code"], "city": place["city"],
-                 "phone": r["phone"] or "", "address": r["address"] or "",
-                 "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
-            action_html = f'<p><a href="{add}">Add review</a></p>' + _attach_button(kind, place, r["name"])
-        else:
-            add = (url_for("new_review") + "?" + urllib.parse.urlencode(
-                {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"],
-                 "phone": r["phone"] or "", "address": r["address"] or "",
-                 "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
-            checkin_btn = _attach_button(kind, place, r["name"])
-            action_html = f'<p><a href="{add}">Add review</a></p>{checkin_btn}'
-            # Tapping a result name opens the place in the device's map app
-            # (new tab) — the Add review link is the path to the review form.
-            name_html = (f'<a href="{esc(name_url)}" target="_blank" rel="noopener">'
-                         f'<strong>{esc(r["name"])}</strong></a>')
-        cards += f"""<div class="card result-card" data-name="{esc(r['name'].lower())}"><div class="rc-top">{photo_html}<div class="rc-body">{name_html} <span class="dist-badge">{r['distance']} mi</span>
-          {rating_html}{detail}{addr}{phone}{web}</div></div>
-          {action_html}</div>"""
-    return header + map_toggle + map_html + search_html + '<div id="result_list">' + cards + '</div>'
+        name_html = (f'<a href="{esc(name_url)}" target="_blank" rel="noopener">'
+                     f'{esc(r["name"])}</a>')
+        logo_html = (f'<img class="fbo-logo" src="{esc(r["logo"])}" alt="" loading="lazy">'
+                     if r.get("logo") else "")
+        meta_parts = []
+        d = r.get("distance")
+        if gps_basis:
+            meta_parts.append(f"{d} mi from you" if d else "On field")
+        elif d:
+            meta_parts.append(f"{d} mi from {code}" if code else f"{d} mi")
+        elif code:
+            meta_parts.append(f"On field at {code}")
+        if r.get("brand") and r["brand"] != r["name"]:
+            meta_parts.append(esc(r["brand"]))
+        if r.get("address"):
+            if r.get("lat") is not None and r.get("lon") is not None:
+                durl = _directions_url(r["lat"], r["lon"], r["name"])
+                meta_parts.append(f'<a href="{esc(durl)}" target="_blank" '
+                                  f'rel="noopener">{esc(r["address"])}</a>')
+            else:
+                meta_parts.append(esc(r["address"]))
+        meta_html = (f'<div class="fbo-meta">{" · ".join(meta_parts)}</div>'
+                     if meta_parts else "")
+        tags_html = ""
+        c = crew.get(_normalize_place_name(r["name"]))
+        if c and c["tags"]:
+            pills = "".join(f'<span class="tag">{esc(t)}</span>' for t in c["tags"])
+            tags_html = f'<div class="fbo-tags">{pills}</div>'
+        add = (url_for("new_review") + "?" + urllib.parse.urlencode(
+            {"kind": "fbo", "place": r["name"], "airport": place["airport_code"], "city": place["city"],
+             "phone": r["phone"] or "", "address": r["address"] or "",
+             "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
+        phone_html = (f'<a class="phone-link" href="tel:{esc(r["phone"])}">{esc(r["phone"])}</a>'
+                      if r.get("phone") else "")
+        rows += (f'<div class="fbo-row result-card" data-name="{esc(r["name"].lower())}">'
+                 f'<div class="fbo-main"><div class="fbo-name">{name_html}{logo_html}</div>'
+                 f'{meta_html}{tags_html}'
+                 f'<div class="fbo-addrev"><a href="{add}">Add review</a></div></div>'
+                 f'{phone_html}</div>')
+    return (header + map_toggle + map_html + search_html
+            + '<div id="result_list"><div class="fbo-list">' + rows + '</div></div>')
 
 
 _PHONE_SVG = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>')
@@ -4561,89 +4659,116 @@ def friends():
     items = ""
     for fr in rows:
         fc = current_checkin(fr["id"])
-        nearby = ""
         if checkin and fc and area_matches(checkin, fc["airport_code"], fc["city"]):
-            nearby = f' — <strong>nearby: {checkin_label(fc)}</strong>'
+            status = f' · <strong>Nearby: {checkin_label(fc)}</strong>'
         elif fc:
-            nearby = f' — checked in: {checkin_label(fc)}'
+            status = f' · Checked in: {checkin_label(fc)}'
         else:
-            nearby = ' — no active check-in'
+            status = ' · No active check-in'
         _search = esc(((fr["name"] or "").split() or [""])[0])
         _name_js = (fr["name"] or "").replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ").replace("\r", " ")
-        items += (f"<li data-search=\"{_search}\">{_avatar_html(fr['id'])}{esc(fr['name'])} ({esc(fr['role'] or 'pilot').title()} · {esc(fr['airline'])} · {esc(fr['base'])} · {esc(fr['aircraft'])}){nearby}"
-                  f' <form method="post" style="display:inline;margin-left:8px">'
+        _meta = " · ".join(x for x in [esc(fr["airline"] or ""), esc(fr["base"] or ""),
+                                       esc(fr["aircraft"] or "")] if x)
+        items += (f'<li class="person-row" data-search="{_search}">'
+                  f'<span class="p-ava">{_avatar_html(fr["id"], 46)}</span>'
+                  f'<div class="p-main"><div class="p-name">{esc(fr["name"])}</div>'
+                  f'<div class="p-meta">{esc(fr["role"] or "pilot").title()}'
+                  f'{" · " + _meta if _meta else ""}{status}</div></div>'
+                  f'<form method="post" class="p-act">'
                   f'<input type="hidden" name="remove_id" value="{fr["id"]}">'
-                  f'<button type="submit" style="background:#7f1d1d;width:auto;padding:4px 10px" onclick="return confirm(\'Remove {_name_js} from your friends?\')">Remove</button>'
+                  f'<button type="submit" class="p-btn p-btn-danger" onclick="return confirm(\'Remove {_name_js} from your friends?\')">Remove</button>'
                   f"</form></li>")
     others = db.execute(
         "SELECT * FROM users WHERE id != ? AND id NOT IN (SELECT friend_id FROM friends WHERE user_id = ?)",
         (user["id"], user["id"])).fetchall()
     if others:
-        add_card = (f'<div class="card"><h2>Add a friend</h2><form method="post">'
+        add_card = (f'<div class="card mini"><h2>Add a friend</h2><form method="post">'
                     f"<label>Pilot's name (as on their account)</label>"
-                    f'<input id="add_friend_input" name="pilot_name" placeholder="Jane Doe" autocomplete="off" required>'
+                    f'<div class="mini-search"><input id="add_friend_input" name="pilot_name" placeholder="Jane Doe" autocomplete="off" required>'
+                    f'<span class="mini-count" id="add_friend_count"></span></div>'
                     f'<button type="submit">Add friend</button></form>')
-        add_items = "".join(
-            f'<li data-search="{esc(((o["name"] or "").split() or [""])[0])}" '
-            f'data-name="{esc(o["name"])}" style="cursor:pointer">'
-            f'{_avatar_html(o["id"])}{esc(o["name"])} '
-            f'<span class="muted">· {esc(o["airline"] or "")} {esc(o["base"] or "")} {esc(o["aircraft"] or "")}</span></li>'
-            for o in others)
-        add_card += (f'<p class="muted" id="add_friend_count"></p>'
-                     f'<ul id="add_friend_list">{add_items}</ul>'
+        add_items = ""
+        for o in others:
+            _ometa = " · ".join(x for x in [esc(o["airline"] or ""), esc(o["base"] or ""),
+                                            esc(o["aircraft"] or "")] if x)
+            add_items += (
+                f'<li class="person-row" data-search="{esc(((o["name"] or "").split() or [""])[0])}" '
+                f'data-name="{esc(o["name"])}" style="cursor:pointer">'
+                f'<span class="p-ava">{_avatar_html(o["id"], 46)}</span>'
+                f'<div class="p-main"><div class="p-name">{esc(o["name"])}</div>'
+                f'<div class="p-meta">{_ometa}</div></div>'
+                f'<form method="post" class="p-act">'
+                f'<input type="hidden" name="pilot_id" value="{o["id"]}">'
+                f'<button type="submit" class="p-btn">Add</button></form></li>')
+        add_card += (f'<p class="muted">Type a name to find pilots.</p>'
+                     f'<ul id="add_friend_list" class="person-list">{add_items}</ul>'
                      f'<script>(function(){{var input=document.getElementById("add_friend_input"),'
                      f'items=document.querySelectorAll("#add_friend_list li"),'
                      f'count=document.getElementById("add_friend_count");'
                      f'function filter(){{var q=input.value.trim().toLowerCase(),n=0;'
                      f'items.forEach(function(li){{var hit=q&&li.getAttribute("data-search").toLowerCase().indexOf(q)===0;'
                      f'li.style.display=hit?"":"none";if(hit)n++;}});'
-                     f'count.textContent=q?(n+(n===1?" match":" matches")):"Type a name to find pilots.";}}'
+                     f'count.textContent=q?(n+(n===1?" match":" matches")):"";}}'
                      f'items.forEach(function(li){{li.addEventListener("click",function(){{'
                      f'input.value=li.getAttribute("data-name");'
                      f'items.forEach(function(x){{x.style.display="none";}});'
                      f'count.textContent="";input.focus();}});}});'
                      f'input.addEventListener("input",filter);filter();}})();</script>')
         if duplicates:
-            dup_items = "".join(
-                f"<li>{_avatar_html(m['id'])}{esc(m['name'])} ({esc(m['role'] or 'pilot').title()} · {esc(m['airline'])} · {esc(m['base'])} · {esc(m['aircraft'])})"
-                f' <form method="post" style="display:inline;margin-left:8px">'
-                f'<input type="hidden" name="pilot_id" value="{m["id"]}">'
-                f'<button type="submit" style="width:auto;padding:4px 10px">Send request</button>'
-                f"</form></li>" for m in duplicates)
+            dup_items = ""
+            for m in duplicates:
+                _dmeta = " · ".join(x for x in [esc(m["airline"] or ""), esc(m["base"] or ""),
+                                                esc(m["aircraft"] or "")] if x)
+                dup_items += (
+                    f'<li class="person-row"><span class="p-ava">{_avatar_html(m["id"], 46)}</span>'
+                    f'<div class="p-main"><div class="p-name">{esc(m["name"])}</div>'
+                    f'<div class="p-meta">{esc(m["role"] or "pilot").title()}'
+                    f'{" · " + _dmeta if _dmeta else ""}</div></div>'
+                    f'<form method="post" class="p-act">'
+                    f'<input type="hidden" name="pilot_id" value="{m["id"]}">'
+                    f'<button type="submit" class="p-btn">Send request</button>'
+                    f"</form></li>")
             add_card += (f'<p class="muted">More than one pilot has that name — pick the right one:</p>'
-                         f'<ul>{dup_items}</ul>')
+                         f'<ul class="person-list">{dup_items}</ul>')
         add_card += '</div>'
     else:
-        add_card = ('<div class="card"><h2>Add a friend</h2>'
+        add_card = ('<div class="card mini"><h2>Add a friend</h2>'
                     '<p class="muted">No more pilots to add — everyone here is already your friend.</p></div>')
     req_items = ""
     for q in db.execute(
             "SELECT r.id, r.from_user_id, u.name, u.airline, u.base, u.aircraft FROM friend_requests r "
             "JOIN users u ON u.id = r.from_user_id WHERE r.to_user_id=?", (user["id"],)).fetchall():
-        req_items += (f"<li>{_avatar_html(q['from_user_id'])}{esc(q['name'])} ({esc(q['airline'])} · {esc(q['base'])} · {esc(q['aircraft'])})"
-                      f' <form method="post" style="display:inline;margin-left:8px">'
+        _qmeta = " · ".join(x for x in [esc(q["airline"] or ""), esc(q["base"] or ""),
+                                        esc(q["aircraft"] or "")] if x)
+        req_items += (f'<li class="person-row"><span class="p-ava">{_avatar_html(q["from_user_id"], 46)}</span>'
+                      f'<div class="p-main"><div class="p-name">{esc(q["name"])}</div>'
+                      f'<div class="p-meta">{_qmeta}</div></div>'
+                      f'<form method="post" class="p-act">'
                       f'<input type="hidden" name="request_id" value="{q["id"]}">'
-                      f'<button type="submit" name="req_action" value="approve" style="width:auto;padding:4px 10px">Approve</button> '
-                      f'<button type="submit" name="req_action" value="decline" style="background:#7f1d1d;width:auto;padding:4px 10px">Decline</button>'
+                      f'<button type="submit" name="req_action" value="approve" class="p-btn">Approve</button>'
+                      f'<button type="submit" name="req_action" value="decline" class="p-btn p-btn-danger">Decline</button>'
                       f"</form></li>")
     for q in db.execute(
             "SELECT r.id, r.to_user_id, u.name, u.airline, u.base, u.aircraft FROM friend_requests r "
             "JOIN users u ON u.id = r.to_user_id WHERE r.from_user_id=?", (user["id"],)).fetchall():
-        req_items += (f'<li class="muted">Request sent to {esc(q["name"])} — waiting for approval'
-                      f' <form method="post" style="display:inline;margin-left:8px">'
+        req_items += (f'<li class="person-row"><span class="p-ava">{_avatar_html(q["to_user_id"], 46)}</span>'
+                      f'<div class="p-main"><div class="p-name">{esc(q["name"])}</div>'
+                      f'<div class="p-meta">Request sent — waiting for approval</div></div>'
+                      f'<span class="p-btn p-btn-ghost">Requested</span>'
+                      f'<form method="post" class="p-act">'
                       f'<input type="hidden" name="request_id" value="{q["id"]}">'
-                      f'<button type="submit" name="req_action" value="cancel" style="background:#7f1d1d;width:auto;padding:4px 10px">Cancel</button>'
+                      f'<button type="submit" name="req_action" value="cancel" class="p-btn p-btn-danger">Cancel</button>'
                       f"</form></li>")
-    req_card = f'<div class="card"><h2>Friend requests</h2><ul>{req_items}</ul></div>' if req_items else ""
-    search_html = (f'<form method="get" style="margin-bottom:12px">'
+    req_card = f'<div class="card mini"><h2>Friend requests</h2><ul class="person-list">{req_items}</ul></div>' if req_items else ""
+    search_html = (f'<form method="get" class="mini-search">'
                    f'<input id="friend_search" name="q" placeholder="Search by first name" '
-                   f'value="{esc(fq)}" autocomplete="off"></form>'
-                   f'<p class="muted" id="friend_count"></p>')
+                   f'value="{esc(fq)}" autocomplete="off">'
+                   f'<span class="mini-count" id="friend_count"></span></form>')
     if fq:
         search_html += (f'<p class="muted"><a href="{url_for("friends")}">Clear search</a></p>')
-    list_html = items or ('<li class="muted">No friends match.</li>' if fq
-                          else '<li class="muted">No friends yet.</li>')
-    no_match = ('<li class="muted" id="friend_no_match" style="display:none">No friends match.</li>'
+    list_html = items or ('<li class="muted p-empty">No friends match.</li>' if fq
+                          else '<li class="muted p-empty">No friends yet.</li>')
+    no_match = ('<li class="muted p-empty" id="friend_no_match" style="display:none">No friends match.</li>'
                 if items else "")
     filter_js = (f'<script>(function(){{var input=document.getElementById("friend_search"),'
                  f'items=document.querySelectorAll("#friend_list li[data-search]"),'
@@ -4655,10 +4780,10 @@ def friends():
                  f'if(none)none.style.display=(q&&n===0)?"":"none";'
                  f'if(count)count.textContent=q?(n+(n===1?" match":" matches")):"";}}'
                  f'input.addEventListener("input",filter);filter();}})();</script>')
-    body = f"""<div class="card"><h2>Friends</h2>
+    body = f"""<div class="card mini"><h2>Friends</h2>
       <p class="muted">Friends show as nearby only when their check-in matches yours.</p>
       {search_html}
-      <ul id="friend_list">{list_html}{no_match}</ul></div>
+      <ul id="friend_list" class="person-list">{list_html}{no_match}</ul></div>
       {req_card}
       {add_card}{filter_js}"""
     return page("Friends", user, body, flash=flash, error=error)
@@ -4852,28 +4977,35 @@ def _messages_html(user, db):
             convos[oid]["unread"] += 1
     if order:
         items = "".join(
-            f'<li>{_avatar_html(oid)}<a href="{url_for("conversation", user_id=oid)}">'
-            f'<strong>{esc(convos[oid]["name"])}</strong></a>'
-            f'{" <span class=\"msgdot\">" + str(convos[oid]["unread"]) + "</span>" if convos[oid]["unread"] else ""}'
-            f'<br><span class="muted">{esc((convos[oid]["latest"]["body"] or "")[:80])}</span></li>'
+            f'<li class="person-row"><span class="p-ava">{_avatar_html(oid, 46)}</span>'
+            f'<div class="p-main"><div class="p-name">'
+            f'<a href="{url_for("conversation", user_id=oid)}">{esc(convos[oid]["name"])}</a></div>'
+            f'<div class="p-meta">{esc((convos[oid]["latest"]["body"] or "")[:80])}</div></div>'
+            f'{" <span class=\"msgdot\">" + str(convos[oid]["unread"]) + "</span>" if convos[oid]["unread"] else ""}</li>'
             for oid in order)
-        inbox = f'<div class="card"><h2>Conversations</h2><ul>{items}</ul></div>'
+        inbox = f'<div class="card mini"><h2>Conversations</h2><ul class="person-list">{items}</ul></div>'
     else:
-        inbox = '<div class="card"><h2>Conversations</h2><p class="muted">No messages yet.</p></div>'
+        inbox = '<div class="card mini"><h2>Conversations</h2><p class="muted">No messages yet.</p></div>'
     others = db.execute(
         "SELECT id, name, airline, base FROM users WHERE id != ? ORDER BY name", (user["id"],)).fetchall()
     fresh = [o for o in others if o["id"] not in convos]
     if fresh:
-        new_items = "".join(
-            f'<li data-search="{esc(((o["name"] or "").split() or [""])[0])}">'
-            f'{_avatar_html(o["id"])}<a href="{url_for("conversation", user_id=o["id"])}">{esc(o["name"])}</a> '
-            f'<span class="muted">· {esc(o["airline"] or "")} {esc(o["base"] or "")}</span></li>'
-            for o in fresh)
-        new_card = (f'<div class="card"><h2>Message someone new</h2>'
+        new_items = ""
+        for o in fresh:
+            _ometa = " · ".join(x for x in ["Your connection", esc(o["airline"] or ""),
+                                            esc(o["base"] or "")] if x)
+            new_items += (
+                f'<li class="person-row" data-search="{esc(((o["name"] or "").split() or [""])[0])}">'
+                f'<span class="p-ava">{_avatar_html(o["id"], 46)}</span>'
+                f'<div class="p-main"><div class="p-name">'
+                f'<a href="{url_for("conversation", user_id=o["id"])}">{esc(o["name"])}</a></div>'
+                f'<div class="p-meta">{_ometa}</div></div>'
+                f'<a class="p-btn" href="{url_for("conversation", user_id=o["id"])}">Message</a></li>')
+        new_card = (f'<div class="card mini"><h2>Message someone new</h2>'
                     f'<p class="muted">Anyone registered — no need to be friends first.</p>'
-                    f'<input id="pilot_search" placeholder="Type a connection\u2019s name\u2026" autocomplete="off">'
+                    f'<div class="mini-search"><input id="pilot_search" placeholder="Type a connection\u2019s name\u2026" autocomplete="off"></div>'
                     f'<p class="muted" id="pilot_count"></p>'
-                    f'<ul id="pilot_list">{new_items}</ul></div>'
+                    f'<ul id="pilot_list" class="person-list">{new_items}</ul></div>'
                     f'<script>(function(){{var input=document.getElementById("pilot_search"),'
                     f'items=document.querySelectorAll("#pilot_list li"),'
                     f'count=document.getElementById("pilot_count");'
