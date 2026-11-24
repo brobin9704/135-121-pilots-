@@ -1835,6 +1835,7 @@ TZ_JS = ("<script>(function(){try{var z=Intl.DateTimeFormat().resolvedOptions().
          "if(!z)return;var m=document.cookie.match(/(?:^|;\\s*)tz=([^;]*)/);"
          "if(m&&decodeURIComponent(m[1])===z)return;"
          "document.cookie='tz='+encodeURIComponent(z)+';path=/;max-age=31536000;SameSite=Lax';"
+         "try{if(!sessionStorage.getItem('tzr')){sessionStorage.setItem('tzr','1');location.reload();}}catch(e){}"
          "}catch(e){}})();</script>")
 
 
@@ -2570,6 +2571,11 @@ def _device_tz():
     except RuntimeError:
         pass  # no request context
     if name:
+        # TZ_JS stores the zone percent-encoded (encodeURIComponent) and
+        # Werkzeug does not decode cookie values, so the raw cookie reads
+        # "America%2FLos_Angeles" — not a ZoneInfo key. Decode it first,
+        # or every real browser silently falls back to UTC.
+        name = urllib.parse.unquote(name).strip().strip('"')
         try:
             return ZoneInfo(name)
         except (ZoneInfoNotFoundError, ValueError):
