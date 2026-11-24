@@ -1375,8 +1375,6 @@ input:disabled{opacity:.55}
 .mc-who{flex:1;min-width:0}
 .mc-tname{font-size:17px;font-weight:700;color:#f2f8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mc-ava-ph{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:rgba(79,195,255,.12);font-size:20px;flex:0 0 auto}
-.mc-banner{display:flex;gap:10px;align-items:flex-start;margin:14px 18px 0;padding:11px 14px;border-radius:14px;background:linear-gradient(120deg,rgba(0,134,232,.13),rgba(86,194,255,.07));border:1px solid rgba(0,134,232,.25);font-size:13.5px;font-weight:600;color:#d7ecff;line-height:1.45}
-.mc-banner svg{width:17px;height:17px;fill:#4fc3ff;flex:0 0 auto;margin-top:1px}
 .mc-msgs{flex:1;overflow-y:auto;padding:14px 18px 10px;min-height:0}
 .mc-day{text-align:center;margin:10px 0 14px}
 .mc-day span{display:inline-block;text-transform:uppercase;font-size:11.5px;font-weight:800;letter-spacing:.06em;color:#a9cdec;background:rgba(79,195,255,.10);border-radius:999px;padding:4px 12px}
@@ -1523,8 +1521,6 @@ html.light .mc-thread-head{border-bottom-color:#e2e8f0}
 html.light .mc-back{background:#f1f5f9}
 html.light .mc-back svg{fill:#0c2531}
 html.light .mc-ava-ph{background:#e0f2fe}
-html.light .mc-banner{color:#334155}
-html.light .mc-banner svg{fill:#0284c7}
 html.light .mc-day span{background:#e2e8f0;color:#475569}
 html.light .mc-bubble.theirs{background:#e9eff6;color:#12293f}
 html.light .mc-read{color:#0284c7}
@@ -5291,7 +5287,6 @@ def messages():
 _MC_SVG_SEARCH = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>')
 _MC_SVG_PENCIL = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>')
 _MC_SVG_CHEV = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>')
-_MC_SVG_PIN = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5-1.38 2.5-2.5 2.5z"/></svg>')
 _MC_SVG_PLANE = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>')
 
 MC_INBOX_JS = """
@@ -5505,7 +5500,7 @@ def _messages_html(user, db):
 
 
 def _thread_pane_html(user, db, other):
-    """Right pane of the Messages shell: header, banner, grouped bubbles, composer."""
+    """Right pane of the Messages shell: header, grouped bubbles, composer."""
     oid = other["id"]
     same, theirs = _msg_loc(user["id"], oid)
     orow = db.execute("SELECT airline, base, aircraft FROM users WHERE id = ?", (oid,)).fetchone()
@@ -5517,16 +5512,6 @@ def _thread_pane_html(user, db, other):
             f'<span class="mc-ava">{_avatar_html(oid, 46)}{dot}</span>'
             f'<div class="mc-who"><div class="mc-tname">{esc(other["name"])}</div>'
             f'<div class="mc-sub">{meta}</div></div></div>')
-    banner = ""
-    if theirs:
-        loc = esc(theirs["airport_code"]) + " · " + esc(theirs["city"])
-        if same:
-            banner = (f'<div class="mc-banner">{_MC_SVG_PIN}<span>You’re both checked in around '
-                      f'<b>{loc}</b> — a good moment to swap local tips or make a plan.</span></div>')
-        else:
-            first = (other["name"] or "").split()[0] if other["name"] else "They"
-            banner = (f'<div class="mc-banner">{_MC_SVG_PIN}<span>{esc(first)} is checked in around '
-                      f'<b>{loc}</b>.</span></div>')
     rows = db.execute(
         "SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) "
         "OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at ASC, id ASC",
@@ -5586,7 +5571,7 @@ def _thread_pane_html(user, db, other):
                 f'<button type="submit" class="mc-send" id="mc_send" aria-label="Send" disabled>{_MC_SVG_PLANE}</button></div>'
                 f'<div class="mc-composer-foot"><span>Enter to send · Shift + Enter for a new line</span>'
                 f'<span class="mc-count" id="mc_count"></span></div></form>')
-    return (f'<div class="mc-thread">{head}{banner}'
+    return (f'<div class="mc-thread">{head}'
             f'<div class="mc-msgs" id="mc_msgs">{msgs}</div>{composer}</div>{MC_THREAD_JS}')
 
 
