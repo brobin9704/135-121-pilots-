@@ -25,7 +25,7 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageOps
     _PIL_OK = True
 except ImportError:
     _PIL_OK = False
@@ -1888,7 +1888,7 @@ def _save_review_photos(db, review_id, files):
             img = Image.open(f.stream)
             img.verify()
             f.stream.seek(0)
-            img = Image.open(f.stream).convert("RGB")
+            img = ImageOps.exif_transpose(Image.open(f.stream)).convert("RGB")
             img.thumbnail((1200, 1200))
             buf = io.BytesIO()
             img.save(buf, "JPEG", quality=72)
@@ -1907,7 +1907,7 @@ def _resize_photo_b64(f, max_px):
         img = Image.open(f.stream)
         img.verify()
         f.stream.seek(0)
-        img = Image.open(f.stream).convert("RGB")
+        img = ImageOps.exif_transpose(Image.open(f.stream)).convert("RGB")
         img.thumbnail((max_px, max_px))
         buf = io.BytesIO()
         img.save(buf, "JPEG", quality=72)
