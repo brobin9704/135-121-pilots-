@@ -1187,7 +1187,7 @@ nav a.active{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 10
 .you-pin-shape:after{content:"";position:absolute;left:6px;top:6px;width:8px;height:8px;background:#fff;border-radius:50%}
 .topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:10px 4px;background:rgba(4,24,46,.72);backdrop-filter:blur(8px);border-bottom:1px solid rgba(140,200,255,.22)}
 .brand-logo{display:inline-flex;align-items:center;flex:0 0 auto}
-.brand-logo img{height:40px;width:auto;display:block;border-radius:10px}
+.brand-logo img{height:40px;width:auto;display:block}
 .topnav{margin:0 auto;display:flex;gap:8px}
 .topnav a{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);border-color:transparent;border-radius:999px;padding:12px 20px;color:#fff;text-decoration:none;font-weight:700;font-size:15px}
 .topnav a.on{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-color:transparent}
@@ -1198,6 +1198,7 @@ nav a.active{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 10
 .avatar-link img{width:40px;height:40px;box-sizing:border-box;border-radius:50%;object-fit:cover;object-position:center;display:block;border:2px solid rgba(79,195,255,.45)}
 .avatar-link .avatar-initial{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;box-sizing:border-box;border-radius:50%;background:rgba(79,195,255,.18);color:#8fd4ff;font-weight:700;font-size:18px;border:2px solid rgba(79,195,255,.45)}
 .logout_link{color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:8px 14px;min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
+.topbar-logout{flex:0 0 auto;white-space:nowrap;margin-left:2px}
 .msgdot{display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:999px;background:#e5484d;color:#fff;font-size:10px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:middle}
 .card{background:rgba(8,42,78,.82);border:1px solid rgba(140,200,255,.22);border-radius:20px;padding:16px;margin:12px 0;box-shadow:0 18px 40px rgba(0,0,0,.35);min-width:0;overflow-wrap:break-word}
 /* Public info pages (How it works / Privacy / Terms): approved copy in
@@ -1420,7 +1421,7 @@ html.hide-resultsmap .resultsmap{display:none}
 .home-stack{display:flex;flex-direction:column;gap:20px;min-width:0}
 .home-stack .card{margin:0}
 @media(max-width:1020px){.home-grid{grid-template-columns:1fr 1fr}.home-stack{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}.qa-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:680px){.hero{padding:20px 16px}.hero h1{font-size:24px}.brand-logo img{height:32px}.avatar-link img,.avatar-link .avatar-initial{width:32px;height:32px;font-size:15px}.hero-avatar img{max-width:64px;max-height:64px}.topbar{gap:8px}.topbar-right{gap:4px}.topnav a{padding:12px 16px;font-size:14px}.loc-actions{flex-direction:column}#locmap{height:240px!important}.rc-photo{flex:0 0 80px;width:80px;height:80px}.rc-top{gap:10px}}
+@media(max-width:680px){.hero{padding:20px 16px}.hero h1{font-size:24px}.brand-logo img{height:32px}.topbar-logout{padding:6px 7px;font-size:12px;margin-left:0}.avatar-link img,.avatar-link .avatar-initial{width:32px;height:32px;font-size:15px}.hero-avatar img{max-width:64px;max-height:64px}.topbar{gap:6px;padding:10px 2px}.topbar-right{gap:2px}.topbar-div{display:none}.icon-btn{min-width:36px;padding:6px}.topnav a{padding:10px 8px;font-size:14px}.loc-actions{flex-direction:column}#locmap{height:240px!important}.rc-photo{flex:0 0 80px;width:80px;height:80px}.rc-top{gap:10px}}
 .loc-card{background:rgba(8,42,78,.82);border:1px solid rgba(140,200,255,.22)}
 .loc-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .loc-head>*{min-width:0}
@@ -1441,7 +1442,7 @@ html.hide-resultsmap .resultsmap{display:none}
 .reviews-grid .card{margin:0}
 @media(max-width:1020px){.reviews-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:480px){.home-grid{grid-template-columns:1fr}.home-stack{grid-template-columns:1fr}.reviews-grid{grid-template-columns:1fr}.thumbs img{width:80px;height:80px}}
-@media(max-width:380px){.wrap{padding:10px}.topbar{padding:8px 2px;gap:6px}.brand-logo img{height:28px}.topnav a{padding:12px 12px;font-size:13px}.topbar-div{display:none}.icon-btn{min-width:40px;min-height:40px;padding:6px}.avatar-link img,.avatar-link .avatar-initial{width:28px;height:28px;font-size:13px}.hero-avatar img{max-width:56px;max-height:56px}.loc-head h2{font-size:20px}.loc-place{font-size:22px}.active-pill{font-size:12px;padding:3px 10px}#locmap{height:220px!important}}
+@media(max-width:380px){.wrap{padding:10px}.topbar{padding:8px 2px;gap:6px}.brand-logo img{height:28px}.topbar-logout{padding:6px 8px;font-size:12px}.topnav a{padding:12px 12px;font-size:13px}.topbar-div{display:none}.icon-btn{min-width:40px;min-height:40px;padding:6px}.avatar-link img,.avatar-link .avatar-initial{width:28px;height:28px;font-size:13px}.hero-avatar img{max-width:56px;max-height:56px}.loc-head h2{font-size:20px}.loc-place{font-size:22px}.active-pill{font-size:12px;padding:3px 10px}#locmap{height:220px!important}}
 /* Landscape orientation: sideways screens are wide but short, so compact vertically */
 @media (orientation:landscape) and (max-height:500px){.topbar{padding:6px 4px;gap:8px}.topbar-right{gap:4px}.brand-logo img{height:32px}.avatar-link img,.avatar-link .avatar-initial{width:32px;height:32px;font-size:15px}.topnav a{padding:12px 16px;font-size:14px}.hero{padding:14px 16px;margin:10px 0 14px;gap:14px}.hero h1{font-size:22px}.hero-sub{font-size:14px;margin-top:4px}.hero-avatar img{width:56px;height:56px}.home-grid{grid-template-columns:1fr 1fr}.home-stack{grid-template-columns:1fr 1fr}.reviews-grid{grid-template-columns:repeat(2,1fr)}.card{padding:12px;margin:10px 0}.home-grid,.home-stack,.reviews-grid{gap:14px}.wrap{padding:10px 16px}.minimap{height:140px}.resultsmap{height:180px}#locmap{height:180px!important}.qa-tile{min-height:72px}}
 @media (orientation:landscape) and (max-height:400px){.hero{padding:10px 14px;margin:8px 0 10px;gap:12px}.hero h1{font-size:20px}.hero-avatar img{width:48px;height:48px}.card{padding:10px}.minimap{height:120px}.resultsmap{height:160px}#locmap{height:160px!important}.topbar{padding:4px}}
@@ -1850,10 +1851,11 @@ def page(title, user, body, flash=None, error=None):
         sound_btn = ('<button id="sound_toggle" class="icon-btn" onclick="pccToggleSound(this)" title="Check-in and message sounds">🔔</button>')
         theme_btn = ('<button id="theme_toggle" class="icon-btn" onclick="pccToggleTheme(this)" title="Switch light / dark">☀️</button>')
         avatar = _topbar_avatar(user)
+        logout_btn = f'<a href="{url_for("logout")}" class="logout_link topbar-logout">Log out</a>'
         chrome = (f'<div class="topbar">'
-                  f'<a href="{url_for("index")}" class="brand-logo"><img src="/static/logo.webp" alt="BtwnFlghts"></a>'
+                  f'<a href="{url_for("index")}" class="brand-logo"><img src="/static/logo-words.webp" alt="BtwnFlghts"></a>'
                   f'<nav class="topnav"><a href="{url_for("index")}" class="on">🏠 Home</a></nav>'
-                  f'<div class="topbar-right">{sound_btn}{theme_btn}<span class="topbar-div"></span>{avatar}</div>'
+                  f'<div class="topbar-right">{sound_btn}{theme_btn}<span class="topbar-div"></span>{avatar}{logout_btn}</div>'
                   f'</div>')
         after = (f'{MINIMAP_JS}'
                  '<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}</script>'
@@ -2859,7 +2861,7 @@ def login_page(error=None):
       .card{{position:relative;width:100%;max-width:380px;background:rgba(13,20,38,.84);
         border:1px solid rgba(148,163,184,.28);border-radius:18px;padding:30px 26px;box-sizing:border-box;
         box-shadow:0 18px 50px rgba(0,0,0,.45)}}
-      h1{{margin:0 0 4px;font-size:28px;letter-spacing:.5px}}
+      .login-logo{{display:block;width:300px;max-width:100%;height:auto;margin:0 auto 16px}}
       .tag{{color:#bae6fd;font-size:14px;margin:0 0 22px}}
       label{{font-weight:600;font-size:14px}}
       input{{width:100%;padding:11px;margin:6px 0 14px;border-radius:10px;border:1px solid #475569;
@@ -2882,7 +2884,7 @@ def login_page(error=None):
       .atc_hint{{position:fixed;bottom:14px;left:0;right:0;z-index:5;text-align:center;color:#cbd5e1;
         font-size:13px;opacity:.85;pointer-events:none;text-shadow:0 1px 6px #000;display:none}}
       </style></head><body><div class="bg"></div><div class="scrim"></div>
-      <div class="card"><h1>BtwnFlghts</h1>
+      <div class="card"><img class="login-logo" src="/static/logo-words.webp" alt="BtwnFlghts">
       <p class="tag">BtwnFlghts is where pilots share real layover intel. Check in at your overnight, leave your honest opinion of the hotels and restaurants nearby, and read what other pilots thought before you book, eat, or sleep.</p>
       {err}<form method="post" id="login_form">
       <label>Email</label><input type="email" name="email" required autocomplete="email">
@@ -3261,8 +3263,7 @@ def profile_form(user):
     <form method="post"><input type="hidden" name="form" value="password">
     <label>Current password</label><input type="password" name="current_password" required autocomplete="current-password">
     <label>New password (at least 8 characters)</label><input type="password" name="new_password" required autocomplete="new-password">
-    <button type="submit">Change password</button></form></div>
-    <p style="text-align:center"><a href="{url_for('logout')}" class="logout_link">Log out</a></p>"""
+    <button type="submit">Change password</button></form></div>"""
 
 @app.route("/")
 @login_required
