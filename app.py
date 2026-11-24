@@ -1200,6 +1200,19 @@ nav a.active{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 10
 .logout_link{color:#94a3b8;text-decoration:none;font-size:13px;border:1px solid #334155;border-radius:999px;padding:8px 14px;min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}
 .msgdot{display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:999px;background:#e5484d;color:#fff;font-size:10px;font-weight:700;padding:0 4px;margin-left:2px;vertical-align:middle}
 .card{background:rgba(8,42,78,.82);border:1px solid rgba(140,200,255,.22);border-radius:20px;padding:16px;margin:12px 0;box-shadow:0 18px 40px rgba(0,0,0,.35);min-width:0;overflow-wrap:break-word}
+/* Public info pages (How it works / Privacy / Terms): approved copy in
+   native cards; numbered steps mirror the preview's circles. */
+.info-card h2{color:#4fc3ff;font-size:18px;margin:0 0 10px}
+.info-card p{margin:0 0 10px}.info-card p:last-child{margin-bottom:0}
+.info-card ul{margin:0;padding-left:20px}.info-card li{margin-bottom:8px}.info-card li:last-child{margin-bottom:0}
+.effective{color:#a9cdec;font-size:14px;margin:2px 0 4px}
+.btn-name{font-weight:700;color:#fff}
+.green-note{color:#3ddc84;font-weight:600}
+ol.isteps{list-style:none;margin:0;padding:0;counter-reset:istep}
+ol.isteps li{counter-increment:istep;position:relative;padding-left:50px;margin-bottom:16px}
+ol.isteps li:last-child{margin-bottom:0}
+ol.isteps li::before{content:counter(istep);position:absolute;left:0;top:0;width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center}
+.istep-title{display:block;font-weight:700;color:#fff;margin-bottom:2px}
 .home-grid>*,.home-stack>*,.reviews-grid>*{min-width:0}
 input,select,textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:8px;border:1px solid #1d4a6b;background:rgba(6,34,64,.82);color:#f2f8ff;box-sizing:border-box;font-size:16px}
 input[type="checkbox"],input[type="radio"]{width:auto;min-height:24px;min-width:24px}
@@ -1864,7 +1877,7 @@ def page(title, user, body, flash=None, error=None):
       {fonts_head}
       <title>{{{{ title }}}} - BtwnFlghts</title><style>{CSS}</style>
       <script>try{{var t=localStorage.getItem('pcc_theme');if(t==='light')document.documentElement.classList.add('light');if(localStorage.getItem('pcc_map_hidden')==='1')document.documentElement.classList.add('hide-resultsmap');}}catch(e){{}}</script>{TZ_JS}</head>
-      <body><div class="{wrap_cls}">{chrome}{msg}{err}{body}{after}<div style="text-align:center;color:#7d94b0;font-size:12px;padding:20px 0 28px">© 2026 BtwnFlghts</div></div></body></html>""",
+      <body><div class="{wrap_cls}">{chrome}{msg}{err}{body}{after}<div style="text-align:center;color:#7d94b0;font-size:12px;padding:20px 0 28px">© 2026 BtwnFlghts<div style="font-size:13px;margin-top:6px"><a href="/how-it-works" style="color:#7d94b0">How BtwnFlghts works</a> · <a href="/privacy" style="color:#7d94b0">Privacy</a> · <a href="/terms" style="color:#7d94b0">Terms</a></div></div></div></body></html>""",
       title=title)
 
 def esc(s):
@@ -2407,6 +2420,141 @@ def login():
         return login_page(error="Email or password did not match.")
     return login_page()
 
+# ------------------------------------------------------- public info pages
+# How BtwnFlghts Works / Privacy Policy / Terms of Use. Public on purpose
+# (no login): the app stores require a reachable privacy URL, and the
+# shared footer links here from every page, logged in or out. Copy is the
+# Bobby-approved draft, ported verbatim from the preview.
+
+HOW_IT_WORKS_BODY = """<h1>How BtwnFlghts Works</h1>
+<div class="card info-card">
+<ol class="isteps">
+<li><span class="istep-title">Create an account</span>
+BtwnFlghts is open to all pilots and crew. Sign up with your name, email, and a password. You can add your airline, base, and aircraft type to your profile.</li>
+<li><span class="istep-title">Set your airport location</span>
+Tap <span class="btn-name">Locate</span>, type the airport code, and tap <span class="btn-name">&ldquo;In the area.&rdquo;</span> <span class="green-note">A green box confirms the code, city, and state agree.</span></li>
+<li><span class="istep-title">Search near you</span>
+From Quick Actions on Home, open Hotels, Restaurants, or Attractions and tap the <span class="btn-name">&ldquo;Search &hellip; near me&rdquo;</span> button. Each card shows the distance from you, public ratings, and a Crew score based on pilot reviews.</li>
+<li><span class="istep-title">Add reviews</span>
+Tap <span class="btn-name">Add review</span> on any place. Tap <span class="btn-name">&ldquo;Staying Here,&rdquo;</span> <span class="btn-name">&ldquo;Eating here,&rdquo;</span> or <span class="btn-name">&ldquo;Visiting here&rdquo;</span> to attach the place to your stay.</li>
+<li><span class="istep-title">Add friends</span>
+Add pilots you&rsquo;ve flown with or met on the road. When you&rsquo;re checked in to the same area, you see each other.</li>
+<li><span class="istep-title">Message your connections</span>
+Send messages to your connections from the app. Message alerts never show the message itself — you see the content only after you log in.</li>
+</ol>
+</div>
+<div class="card info-card">
+<h2>When you leave</h2>
+<p>Tap <span class="btn-name">&ldquo;Leaving the area&rdquo;</span> on Home. That ends your check-in.</p>
+</div>"""
+
+PRIVACY_BODY = """<h1>Privacy Policy</h1>
+<p class="effective">Effective November 24, 2026</p>
+<div class="card info-card">
+<h2>What BtwnFlghts collects</h2>
+<ul>
+<li><strong>Your account:</strong> your name, email address, your password (stored hashed, never in plain text), your Pilot or Crew role, and your airline, base, and aircraft type.</li>
+<li><strong>Your profile photo</strong>, if you add one. It&rsquo;s optional.</li>
+<li><strong>Your check-ins:</strong> the airport code, city, and state, the dates, and any hotel, restaurant, or attraction you attach to your stay.</li>
+<li><strong>Your reviews:</strong> the text, star rating, optional safety rating, tags, and photos. If you add a place&rsquo;s phone number or address to a review, that is stored too.</li>
+<li><strong>Messages you send</strong>, and your friend connections and requests.</li>
+<li><strong>A record of each successful sign-in</strong>, with the date and time. The app does not record IP addresses.</li>
+<li><strong>A push-notification subscription</strong>, if you turn push notifications on.</li>
+<li><strong>Two cookies:</strong> one remembers your device&rsquo;s time zone so times display in your local time, and one keeps you signed in. Your sound and theme choices are stored only on your device.</li>
+</ul>
+</div>
+<div class="card info-card">
+<h2>What other members can see</h2>
+<ul>
+<li>Your name, profile photo, role, airline, base, and aircraft type.</li>
+<li>Your current check-in area, and the friends-in-area features built on it.</li>
+<li>Your reviews. If you check &ldquo;Post anonymously,&rdquo; other members see &ldquo;Anonymous&rdquo; — but the account owner can still see the review is yours, for moderation.</li>
+<li>Messages are visible only to you and the person you&rsquo;re messaging.</li>
+</ul>
+</div>
+<div class="card info-card">
+<h2>Location and outside services</h2>
+<ul>
+<li>When you tap a &ldquo;near me&rdquo; search, your location at that moment is sent to the mapping and listing services that answer it — OpenStreetMap services and Yelp. BtwnFlghts never tracks or stores your movements.</li>
+<li>The &ldquo;My location&rdquo; map on Home runs on your phone only. Nothing from it is sent to or stored by the app.</li>
+<li>Emails — friend requests, nearby alerts, password resets, and message notifications — are sent through the operator&rsquo;s Yahoo mail account. A message-notification email includes the first part of the message.</li>
+<li>Push notifications go through your browser&rsquo;s push service. They carry no message content — they say &ldquo;You have a new message. Log in to read it.&rdquo;</li>
+<li>FBO details come from AirNav. Only the airport code is requested.</li>
+</ul>
+</div>
+<div class="card info-card">
+<h2>What we don&rsquo;t do</h2>
+<p>We don&rsquo;t sell personal data. We don&rsquo;t run advertising. We don&rsquo;t use third-party analytics or trackers.</p>
+</div>
+<div class="card info-card">
+<h2>Your control</h2>
+<ul>
+<li>You can edit your profile and your reviews at any time.</li>
+<li>To delete your account and your data, email the operator at <a href="mailto:bobby@btwnflghts.com">bobby@btwnflghts.com</a>.</li>
+<li>BtwnFlghts is for pilots and crew. It is not directed at children.</li>
+<li>If this policy changes, the updated version will be posted on this page with a new date.</li>
+</ul>
+</div>"""
+
+TERMS_BODY = """<h1>Terms of Use</h1>
+<p class="effective">Effective November 24, 2026</p>
+<div class="card info-card">
+<h2>Who may use BtwnFlghts</h2>
+<p>BtwnFlghts is for pilots and crew. One account per person — don&rsquo;t share your account with anyone else. Give accurate information when you sign up, and keep your sign-in details secure. You&rsquo;re responsible for activity on your account, so tell the operator if you think someone else has used it.</p>
+</div>
+<div class="card info-card">
+<h2>Your content</h2>
+<ul>
+<li>You keep ownership of the reviews, photos, and messages you post. By posting, you give BtwnFlghts permission to store and display them inside the service.</li>
+<li>Post honestly. A review must reflect your real experience.</li>
+<li>You can edit your reviews after posting.</li>
+<li>Posting anonymously hides your name from other members. It does not hide it from the operator.</li>
+</ul>
+</div>
+<div class="card info-card">
+<h2>Rules</h2>
+<ul>
+<li>No harassment, hate, or spam.</li>
+<li>No impersonation — don&rsquo;t pretend to be someone else.</li>
+<li>No illegal content.</li>
+<li>Don&rsquo;t post other people&rsquo;s private information.</li>
+<li>Don&rsquo;t scrape the service, and don&rsquo;t do anything that disrupts it.</li>
+</ul>
+</div>
+<div class="card info-card">
+<h2>Moderation</h2>
+<p>Members can report reviews. A review flagged by three or more members is hidden automatically — you can still see your own hidden review, with a notice that it&rsquo;s hidden. The operator may remove content, or close accounts, that break these terms.</p>
+</div>
+<div class="card info-card">
+<h2>Information and the service</h2>
+<ul>
+<li>Listings, FBO details, and ratings come from members and outside sources. They aren&rsquo;t guaranteed to be accurate or current, so check details with the business before you rely on them.</li>
+<li>Ratings are the opinions of the members who posted them.</li>
+<li>A safety rating is another pilot&rsquo;s reported experience. It is not a guarantee of safety.</li>
+<li>The service is provided &ldquo;as is,&rdquo; without warranties. Liability is limited as far as the law allows.</li>
+</ul>
+</div>
+<div class="card info-card">
+<h2>Governing law and changes</h2>
+<ul>
+<li>These terms are governed by the laws of the State of Michigan.</li>
+<li>If these terms change, the updated version will be posted on this page with a new date.</li>
+<li>Questions: <a href="mailto:bobby@btwnflghts.com">bobby@btwnflghts.com</a>.</li>
+</ul>
+</div>"""
+
+@app.route("/how-it-works")
+def how_it_works():
+    return page("How BtwnFlghts Works", current_user(), HOW_IT_WORKS_BODY)
+
+@app.route("/privacy")
+def privacy():
+    return page("Privacy Policy", current_user(), PRIVACY_BODY)
+
+@app.route("/terms")
+def terms():
+    return page("Terms of Use", current_user(), TERMS_BODY)
+
 # ------------------------------------------------------- device timezone
 # The page shell sets a "tz" cookie from the device clock
 # (Intl.DateTimeFormat().resolvedOptions().timeZone). All user-facing times
@@ -2724,6 +2872,8 @@ def login_page(error=None):
         border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}}
       .reg{{text-align:center;margin:14px 0 0;font-size:14px;color:#cbd5e1}}
       .copy{{text-align:center;margin:18px 0 0;font-size:12px;color:#94a3b8}}
+      .footlinks{{text-align:center;margin:8px 0 0;font-size:13px;color:#94a3b8}}
+      .footlinks a{{color:#94a3b8}}
       .reg a{{color:#7dd3fc}}
       .error{{background:#7f1d1d;border:1px solid #ef4444;padding:10px;border-radius:10px;margin:0 0 14px}}
       .atc_toggle{{position:fixed;top:12px;right:12px;z-index:5;width:auto;background:rgba(13,20,38,.7);
@@ -2740,7 +2890,8 @@ def login_page(error=None):
       <button type="button" id="login_btn">Log in</button></form>
       <p class="reg"><a href="/forgot-password">Forgot password?</a></p>
       <p class="reg">No account yet? <a href="/register">Register</a></p>
-      <p class="copy">© 2026 BtwnFlghts</p></div>
+      <p class="copy">© 2026 BtwnFlghts</p>
+      <p class="footlinks"><a href="/how-it-works">How BtwnFlghts works</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p></div>
       {ATC_AUDIO_HTML}<script>{ATC_AUDIO_JS}</script>
       <script>var _lf=document.getElementById('login_form');var _lb=document.getElementById('login_btn');_lf.addEventListener('keydown',function(e){{if(e.key==='Enter'){{e.preventDefault();}}}});_lb.addEventListener('click',function(){{if(_lf.checkValidity()){{_lb.disabled=true;_lf.submit();}}else{{_lf.reportValidity();}}}});var _pw=document.getElementById('pw');var _pt=document.getElementById('pw_toggle');_pt.addEventListener('click',function(){{var show=_pw.type==='password';_pw.type=show?'text':'password';_pt.textContent=show?'Hide':'Show';}});</script>
       </body></html>""")
