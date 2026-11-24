@@ -23,6 +23,7 @@ import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
     from PIL import Image, ImageOps
@@ -537,7 +538,8 @@ def is_current(checkin):
         return False
     if checkin["checked_out"]:
         return False
-    today = date.today().isoformat()
+    # "Today" is the device's date (tz cookie), not the server's.
+    today = _device_today().isoformat()
     start = checkin["start_date"]
     if start and start > today:
         return False
@@ -551,7 +553,7 @@ def is_upcoming(checkin):
     if not checkin or checkin["checked_out"]:
         return False
     start = checkin["start_date"]
-    return bool(start) and start > date.today().isoformat()
+    return bool(start) and start > _device_today().isoformat()
 
 def upcoming_checkins(user_id):
     rows = get_db().execute(
@@ -1819,6 +1821,13 @@ AIRPORT_RESULT_JS = """<script>
 })();
 </script>"""
 
+TZ_JS = ("<script>(function(){try{var z=Intl.DateTimeFormat().resolvedOptions().timeZone;"
+         "if(!z)return;var m=document.cookie.match(/(?:^|;\\s*)tz=([^;]*)/);"
+         "if(m&&decodeURIComponent(m[1])===z)return;"
+         "document.cookie='tz='+encodeURIComponent(z)+';path=/;max-age=31536000;SameSite=Lax';"
+         "}catch(e){}})();</script>")
+
+
 def page(title, user, body, flash=None, error=None):
     msg = f'<div class="flash">{flash}</div>' if flash else ""
     err = f'<div class="error">{error}</div>' if error else ""
@@ -1854,7 +1863,7 @@ def page(title, user, body, flash=None, error=None):
       {pwa_head}
       {fonts_head}
       <title>{{{{ title }}}} - BtwnFlghts</title><style>{CSS}</style>
-      <script>try{{var t=localStorage.getItem('pcc_theme');if(t==='light')document.documentElement.classList.add('light');if(localStorage.getItem('pcc_map_hidden')==='1')document.documentElement.classList.add('hide-resultsmap');}}catch(e){{}}</script></head>
+      <script>try{{var t=localStorage.getItem('pcc_theme');if(t==='light')document.documentElement.classList.add('light');if(localStorage.getItem('pcc_map_hidden')==='1')document.documentElement.classList.add('hide-resultsmap');}}catch(e){{}}</script>{TZ_JS}</head>
       <body><div class="{wrap_cls}">{chrome}{msg}{err}{body}{after}</div></body></html>""",
       title=title)
 
@@ -2398,11 +2407,66 @@ def login():
         return login_page(error="Email or password did not match.")
     return login_page()
 
+# ------------------------------------------------------- device timezone
+# The page shell sets a "tz" cookie from the device clock
+# (Intl.DateTimeFormat().resolvedOptions().timeZone). All user-facing times
+# and dates are rendered in that zone; storage is never changed. Stored
+# timestamps are UTC-based: SQLite created_at text comes from
+# datetime('now') (UTC), Postgres TIMESTAMPTZ comes back from psycopg2 as an
+# aware datetime (the instant is exact whatever the session zone is), and
+# login_events.logged_in_at is epoch seconds.
+
+def _device_tz():
+    """ZoneInfo named by the tz cookie, or UTC when it is missing/invalid."""
+    name = ""
+    try:
+        name = (request.cookies.get("tz") or "").strip()
+    except RuntimeError:
+        pass  # no request context
+    if name:
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return timezone.utc
+
+
+def _device_today():
+    """Today's date on the device whose request this is."""
+    return datetime.now(_device_tz()).date()
+
+
+def _to_device_dt(ts):
+    """A stored timestamp as an aware datetime in the device timezone.
+
+    Naive values are read as UTC (SQLite text / naive datetimes are UTC by
+    construction); aware values keep their instant and are converted.
+    Returns None for missing/unparseable values."""
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        dt = ts
+    else:
+        try:
+            dt = datetime.fromisoformat(str(ts).strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_device_tz())
+
+
+def _fmt_stamp(ts):
+    """A stored timestamp as 'YYYY-MM-DD HH:MM ZZZ' in the device zone."""
+    dt = _to_device_dt(ts)
+    return dt.strftime("%Y-%m-%d %H:%M %Z") if dt else ""
+
+
 def _fmt_login_ts(ts):
-    """Epoch seconds -> 'YYYY-MM-DD HH:MM UTC'; None -> 'never'."""
+    """Epoch seconds -> 'YYYY-MM-DD HH:MM ZZZ' in the device zone; None -> 'never'."""
     if not ts:
         return "never"
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return datetime.fromtimestamp(ts, tz=_device_tz()).strftime("%Y-%m-%d %H:%M %Z")
 
 def _hash_reset_token(token):
     import hashlib
@@ -2747,15 +2811,11 @@ def _is_admin(user):
 
 def _to_date(value):
     """Normalize a created_at value — SQLite text 'YYYY-MM-DD HH:MM:SS' or a
-    Postgres TIMESTAMPTZ datetime — to a UTC date, or None."""
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        d = value
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=timezone.utc)
-        return d.astimezone(timezone.utc).date()
-    s = str(value).strip()
+    Postgres TIMESTAMPTZ datetime — to a date in the device timezone, or None."""
+    dt = _to_device_dt(value)
+    if dt is not None:
+        return dt.date()
+    s = str(value or "").strip()
     if len(s) < 10:
         return None
     try:
@@ -2773,7 +2833,7 @@ def admin():
     if not _is_admin(user):
         return page("Admin", user, '<div class="card"><p class="muted">Not available.</p></div>')
     db = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = _device_today()
     week_ago = today - timedelta(days=6)  # last 7 days including today
 
     def _in_week(d):
@@ -2797,7 +2857,7 @@ def admin():
     n_checkins_w = sum(1 for c in checkins if _in_week(_to_date(c["created_at"])))
     n_reviews_w = sum(1 for r in reviews if _in_week(_to_date(r["created_at"])))
     n_messages_w = sum(1 for m in messages if _in_week(_to_date(m["created_at"])))
-    login_dates = [datetime.fromtimestamp(r["logged_in_at"], tz=timezone.utc).date()
+    login_dates = [datetime.fromtimestamp(r["logged_in_at"], tz=_device_tz()).date()
                    for r in logins]
     n_logins_today = sum(1 for d in login_dates if d == today)
     n_logins_w = sum(1 for d in login_dates if d >= week_ago)
@@ -2948,7 +3008,7 @@ def admin():
     rows = "".join(
         f"<li>{_avatar_html(u['id'], 28)}{esc(u['name'])} — {esc(u['email'])} "
         f"({esc(u['role'] or 'pilot').title()} · {esc(u['airline'])} · {esc(u['base'])} · {esc(u['aircraft'])}) "
-        f"<span class='muted'>joined {esc(str(u['created_at'] or ''))}</span>"
+        f"<span class='muted'>joined {esc(_fmt_stamp(u['created_at']))}</span>"
         f"{_remove_photo_form(u['id']) if u['has_photo'] else ''}</li>"
         for u in users)
 
@@ -3642,7 +3702,7 @@ def board():
         state = request.form.get("state", "").strip().upper() or None
         kind = request.form.get("kind", "").strip()
         kind = kind if kind in ("hotel", "restaurant", "attraction") else None
-        start = request.form.get("start_date") or date.today().isoformat()
+        start = request.form.get("start_date") or _device_today().isoformat()
         end = request.form.get("end_date") or None
         # The airport code, city, and state must verify against each other
         # before a check-in is saved.
@@ -3682,7 +3742,8 @@ def board():
             db.commit()
             # Friend nearby alerts go out only for a check-in that starts today —
             # a future-dated check-in stays silent until its date arrives.
-            if start <= date.today().isoformat():
+            # "Today" is the device's date (tz cookie), not the server's.
+            if start <= _device_today().isoformat():
                 buds = []
                 for fr in db.execute(
                         "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?",
@@ -3733,7 +3794,7 @@ def board():
       <label>State</label>{_state_dd}
       <label>City</label><input name="city" id="city" placeholder="Start typing a city" autocomplete="off" required><div id="city_suggest"></div>
       <div id="city_airports"></div>
-      <label>Start date</label><input type="date" name="start_date" value="{date.today().isoformat()}">
+      <label>Start date</label><input type="date" name="start_date" value="{_device_today().isoformat()}">
       <label>End date (optional)</label><input type="date" name="end_date">
       <button type="submit">In the area</button></form></div>{AUTOFILL_JS}{FINDME_JS}{CITY_DROPDOWN_JS}{CITY_AIRPORTS_JS}{AIRPORT_RESULT_JS}
       {upcoming_checkins_html(user)}
@@ -5128,16 +5189,9 @@ upd();
 
 
 def _msg_dt(ts):
-    """Parse a message created_at (SQLite text or Postgres datetime) for display."""
-    if ts is None:
-        return None
-    if isinstance(ts, datetime):
-        return ts.replace(tzinfo=None)
-    try:
-        dt = datetime.fromisoformat(str(ts).strip().replace("Z", ""))
-        return dt.replace(tzinfo=None)
-    except ValueError:
-        return None
+    """Parse a message created_at (SQLite text or Postgres datetime) for
+    display, converted to the device timezone (see _to_device_dt)."""
+    return _to_device_dt(ts)
 
 
 def _msg_clock(dt):
@@ -5147,7 +5201,7 @@ def _msg_clock(dt):
 def _msg_day_label(dt):
     if not dt:
         return ""
-    today = date.today()
+    today = _device_today()
     d = dt.date()
     if d == today:
         return "Today"
@@ -5161,7 +5215,7 @@ def _msg_day_label(dt):
 def _msg_list_time(dt):
     if not dt:
         return ""
-    today = date.today()
+    today = _device_today()
     d = dt.date()
     if d == today:
         return _msg_clock(dt)
