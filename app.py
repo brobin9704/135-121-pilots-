@@ -1312,6 +1312,83 @@ input:disabled{opacity:.55}
 .fbo-addrev{margin-top:6px;font-size:13px}
 .phone-link{flex:0 0 auto;color:#4fc3ff;font-weight:700;font-size:14px;text-decoration:none;white-space:nowrap;padding-top:2px}
 @media(max-width:560px){.person-row{flex-wrap:wrap;row-gap:8px}.p-main{flex:1 1 150px}.p-act{margin-left:auto}}
+/* Message chat, ported from the message-chat-redesign rendition:
+   two-pane shell (372px inbox + thread) above 820px, one column at or
+   below it; sender-run bubble grouping with one meta line per run. */
+.mc-shell{display:grid;grid-template-columns:372px 1fr;background:rgba(8,42,78,.86);border:1px solid rgba(120,190,255,.20);border-radius:26px;overflow:hidden;height:min(780px,calc(100dvh - 132px));min-height:520px;margin:12px 0 16px;box-shadow:0 24px 60px rgba(0,10,30,.45)}
+.mc-inbox{border-right:1px solid rgba(120,190,255,.16);display:flex;flex-direction:column;min-height:0;min-width:0}
+.mc-inbox-head{padding:16px 16px 10px}
+.mc-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mc-title-row h2{margin:0;display:flex;align-items:center;gap:8px}
+.mc-pill{background:#e5484d;color:#fff;font-size:12px;font-weight:800;min-width:24px;height:24px;border-radius:999px;padding:0 7px;display:inline-flex;align-items:center;justify-content:center}
+.mc-new{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-radius:999px;padding:0 16px;min-height:38px;font-size:14px;font-weight:700;text-decoration:none}
+.mc-new svg{width:15px;height:15px;fill:#fff}
+.mc-search{display:flex;align-items:center;gap:8px;background:rgba(79,195,255,.08);border:1px solid rgba(120,190,255,.25);border-radius:13px;min-height:44px;padding:0 6px 0 12px;margin-top:12px}
+.mc-search svg{width:18px;height:18px;fill:#a9cdec;flex:0 0 auto}
+.mc-search input{flex:1;min-width:0;width:100%;background:transparent;border:0;color:#f2f8ff;margin:0;padding:10px 0;font-size:16px}
+.mc-search input::placeholder{color:#94a3b8}
+.mc-clear{flex:0 0 auto;width:32px;height:32px;border-radius:50%;border:0;background:rgba(79,195,255,.15);color:#f2f8ff;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.mc-search-meta{font-size:12.5px;font-weight:700;color:#a9cdec;min-height:16px;margin:8px 2px 0}
+.mc-search-meta b{color:#4fc3ff}
+.mc-list{flex:1;overflow-y:auto;padding:4px 8px 12px;min-height:0}
+.mc-conv{display:flex;gap:12px;align-items:flex-start;padding:11px 10px;border-radius:16px;text-decoration:none;color:#f2f8ff;position:relative;min-width:0}
+.mc-conv:hover{background:rgba(79,195,255,.07)}
+.mc-conv.active{background:rgba(79,195,255,.13)}
+.mc-conv.active::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3.5px;border-radius:99px;background:#4fc3ff}
+.mc-ava{position:relative;flex:0 0 auto;line-height:0}
+.mc-ava img,.mc-ava>span,.mc-tava img,.mc-tava>span{margin-right:0!important}
+.mc-dot{position:absolute;right:0;bottom:0;width:14px;height:14px;border-radius:50%;background:#22c55e;border:2.5px solid #0a2c50;box-sizing:border-box}
+.mc-main{flex:1;min-width:0;display:block}
+.mc-top{display:flex;align-items:baseline;gap:8px}
+.mc-name{font-size:15.5px;font-weight:800;color:#f2f8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-time{margin-left:auto;font-size:12px;font-weight:700;color:#a9cdec;white-space:nowrap}
+.mc-time.unread{color:#4fc3ff}
+.mc-sub{display:block;font-size:12.5px;font-weight:700;color:#a9cdec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.mc-loc{color:#4ade80}
+.mc-loc-away{color:#a9cdec}
+.mc-sniprow{display:flex;align-items:center;gap:8px;margin-top:2px}
+.mc-snip{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:#a9cdec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-snip.unread{color:#f2f8ff;font-weight:800}
+.mc-badge{background:#e5484d;color:#fff;font-size:11.5px;font-weight:800;min-width:21px;height:21px;border-radius:999px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.mc-nomatch{padding:18px 10px}
+.mc-nomatch-t{font-size:15px;font-weight:800;margin:0 0 4px}
+.mc-thread{display:flex;flex-direction:column;min-height:0;min-width:0}
+.mc-thread-head{display:flex;gap:12px;align-items:center;padding:13px 18px;border-bottom:1px solid rgba(120,190,255,.16)}
+.mc-back{display:none;width:38px;height:38px;border-radius:50%;background:rgba(79,195,255,.10);align-items:center;justify-content:center;flex:0 0 auto;text-decoration:none}
+.mc-back svg{width:19px;height:19px;fill:#f2f8ff}
+.mc-who{flex:1;min-width:0}
+.mc-tname{font-size:17px;font-weight:700;color:#f2f8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-ava-ph{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:rgba(79,195,255,.12);font-size:20px;flex:0 0 auto}
+.mc-banner{display:flex;gap:10px;align-items:flex-start;margin:14px 18px 0;padding:11px 14px;border-radius:14px;background:linear-gradient(120deg,rgba(0,134,232,.13),rgba(86,194,255,.07));border:1px solid rgba(0,134,232,.25);font-size:13.5px;font-weight:600;color:#d7ecff;line-height:1.45}
+.mc-banner svg{width:17px;height:17px;fill:#4fc3ff;flex:0 0 auto;margin-top:1px}
+.mc-msgs{flex:1;overflow-y:auto;padding:14px 18px 10px;min-height:0}
+.mc-day{text-align:center;margin:10px 0 14px}
+.mc-day span{display:inline-block;text-transform:uppercase;font-size:11.5px;font-weight:800;letter-spacing:.06em;color:#a9cdec;background:rgba(79,195,255,.10);border-radius:999px;padding:4px 12px}
+.mc-row{display:flex;align-items:flex-end;gap:12px;margin-bottom:3px}
+.mc-row.tail{margin-bottom:12px}
+.mc-row.mine{justify-content:flex-end}
+.mc-tava{flex:0 0 28px;line-height:0}
+.mc-ghost{flex:0 0 28px}
+.mc-bubble{max-width:min(68%,520px);padding:10px 14px;border-radius:20px;font-size:15px;line-height:1.45;font-weight:550;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word}
+.mc-bubble.mine{background:linear-gradient(150deg,#0ea5e9,#0284c7);color:#fff;border-bottom-right-radius:7px;box-shadow:0 4px 14px rgba(2,132,199,.25)}
+.mc-bubble.theirs{background:#103c68;color:#eef6ff;border-bottom-left-radius:7px}
+.mc-meta{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#a9cdec;margin:0 0 10px}
+.mc-meta.mine{justify-content:flex-end}
+.mc-meta.theirs{margin-left:40px}
+.mc-read{color:#4fc3ff;font-weight:700}
+.mc-greet{text-align:center;padding:48px 20px}
+.mc-greet h3{margin:14px 0 6px}
+.mc-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px}
+.mc-composer{border-top:1px solid rgba(120,190,255,.16);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+.mc-composer-inner{display:flex;align-items:flex-end;gap:10px;max-width:860px;margin:0 auto}
+.mc-composer textarea{flex:1;width:100%;margin:0;padding:11px 16px;border-radius:22px;border:1px solid rgba(120,190,255,.3);background:rgba(6,34,64,.82);color:#f2f8ff;font-size:15.5px;line-height:1.4;min-height:44px;max-height:120px;resize:none;box-sizing:border-box;font-family:inherit}
+.mc-send{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:0;background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 16px rgba(0,134,232,.35);padding:0}
+.mc-send:disabled{opacity:.35;box-shadow:none;cursor:default}
+.mc-send svg{width:20px;height:20px;fill:#fff;margin-left:2px}
+.mc-composer-foot{display:flex;justify-content:space-between;gap:10px;max-width:860px;margin:6px auto 0;font-size:11.5px;font-weight:700;color:#a9cdec}
+.mc-count.warn{color:#fbbf24}
+.mc-count.over{color:#f87171}
+@media(max-width:820px){.mc-shell{grid-template-columns:1fr;height:calc(100dvh - 118px);min-height:460px;border-radius:20px}.mc-inbox{border-right:0}.mc-thread{display:none}.mc-shell.mc-showthread .mc-thread{display:flex}.mc-shell.mc-showthread .mc-inbox{display:none}.mc-back{display:inline-flex}.mc-bubble{max-width:80%}}
 .map-toggle{background:none;border:1px solid rgba(140,200,255,.4);color:#f2f8ff;border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer;min-height:44px}
 html.hide-resultsmap .resultsmap{display:none}
 .hero{position:relative;border-radius:20px;overflow:hidden;padding:26px 24px;margin:14px 0 20px;background:rgba(8,42,78,.82);border:1px solid rgba(140,200,255,.22);display:flex;gap:18px;align-items:center}
@@ -1408,6 +1485,37 @@ html.light .fbo-name a{color:#0c2531}
 html.light .fbo-meta{color:#64748b}
 html.light .fbo-meta a{color:#64748b}
 html.light .phone-link{color:#0284c7}
+html.light .mc-shell{background:#fff;border-color:#e2e8f0}
+html.light .mc-inbox{border-right-color:#e2e8f0}
+html.light .mc-name,html.light .mc-tname{color:#0c2531}
+html.light .mc-time,html.light .mc-sub,html.light .mc-snip,html.light .mc-meta,html.light .mc-composer-foot,html.light .mc-search-meta{color:#64748b}
+html.light .mc-time.unread{color:#0284c7}
+html.light .mc-snip.unread{color:#0c2531}
+html.light .mc-loc{color:#16a34a}
+html.light .mc-loc-away{color:#64748b}
+html.light .mc-conv{color:#0c2531}
+html.light .mc-conv:hover{background:#f1f5f9}
+html.light .mc-conv.active{background:#e0f2fe}
+html.light .mc-conv.active::before{background:#0284c7}
+html.light .mc-dot{border-color:#fff}
+html.light .mc-search{background:#f1f5f9;border-color:#cbd5e1}
+html.light .mc-search svg{fill:#64748b}
+html.light .mc-search input{color:#0c2531}
+html.light .mc-clear{background:#e2e8f0;color:#0c2531}
+html.light .mc-search-meta b{color:#0284c7}
+html.light .mc-thread-head{border-bottom-color:#e2e8f0}
+html.light .mc-back{background:#f1f5f9}
+html.light .mc-back svg{fill:#0c2531}
+html.light .mc-ava-ph{background:#e0f2fe}
+html.light .mc-banner{color:#334155}
+html.light .mc-banner svg{fill:#0284c7}
+html.light .mc-day span{background:#e2e8f0;color:#475569}
+html.light .mc-bubble.theirs{background:#e9eff6;color:#12293f}
+html.light .mc-read{color:#0284c7}
+html.light .mc-composer{border-top-color:#e2e8f0}
+html.light .mc-composer textarea{background:#fff;color:#0c2531;border-color:#cbd5e1}
+html.light .mc-count.warn{color:#d97706}
+html.light .mc-count.over{color:#dc2626}
 html.light .topbar{background:rgba(233,242,238,.92);border-bottom-color:#cbd5e1}
 html.light .topnav a{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-color:transparent}
 html.light .topnav a.on{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-color:transparent}
@@ -1716,7 +1824,7 @@ def page(title, user, body, flash=None, error=None):
     err = f'<div class="error">{error}</div>' if error else ""
     chrome, after, wrap_cls = "", "", "wrap"
     if user:
-        wrap_cls = "wrap wrap-wide" if title == "Home" else "wrap"
+        wrap_cls = "wrap wrap-wide" if title in ("Home", "Messages") else "wrap"
         sound_btn = ('<button id="sound_toggle" class="icon-btn" onclick="pccToggleSound(this)" title="Check-in and message sounds">🔔</button>')
         theme_btn = ('<button id="theme_toggle" class="icon-btn" onclick="pccToggleTheme(this)" title="Switch light / dark">☀️</button>')
         avatar = _topbar_avatar(user)
@@ -4965,7 +5073,128 @@ def messages():
     return page("Messages", user, _messages_html(user, db))
 
 
-def _messages_html(user, db):
+_MC_SVG_SEARCH = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>')
+_MC_SVG_PENCIL = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>')
+_MC_SVG_CHEV = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>')
+_MC_SVG_PIN = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5-1.38 2.5-2.5 2.5z"/></svg>')
+_MC_SVG_PLANE = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>')
+
+MC_INBOX_JS = """
+<script>(function(){
+var input=document.getElementById("mc_conv_search");if(!input)return;
+var rows=document.querySelectorAll("#mc_list .mc-conv"),meta=document.getElementById("mc_conv_meta"),
+nomatch=document.getElementById("mc_nomatch"),clear=document.getElementById("mc_conv_clear");
+function filter(){
+var q=input.value.trim().toLowerCase(),n=0;
+rows.forEach(function(r){
+var hit=q&&r.getAttribute("data-name").indexOf(q)===0;
+r.style.display=(!q||hit)?"":"none";
+if(hit)n++;});
+if(clear)clear.style.display=q?"":"none";
+if(nomatch)nomatch.style.display=(q&&n===0)?"":"none";
+if(!q){meta.textContent="";return;}
+var Q=input.value.trim().toUpperCase();
+if(n===0){meta.innerHTML='No conversations start with <b>\u201c'+Q+'\u201d</b>';}
+else{meta.innerHTML=n+(n===1?' conversation starts with <b>\u201c':' conversations start with <b>\u201c')+Q+'\u201d</b>';}
+}
+input.addEventListener("input",filter);
+if(clear)clear.addEventListener("click",function(){input.value="";filter();input.focus();});
+filter();
+})();</script>"""
+
+MC_THREAD_JS = """
+<script>(function(){
+var m=document.getElementById("mc_msgs");
+function mcBottom(){if(m)m.scrollTop=m.scrollHeight;}
+mcBottom();
+if(window.requestAnimationFrame)requestAnimationFrame(function(){mcBottom();});
+window.addEventListener("load",mcBottom);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(mcBottom);
+setTimeout(mcBottom,350);
+var ta=document.getElementById("mc_input"),send=document.getElementById("mc_send"),count=document.getElementById("mc_count"),form=document.getElementById("mc_form");
+if(!ta)return;
+function upd(){
+ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight,120)+"px";
+var n=ta.value.length;
+send.disabled=!ta.value.trim()||n>2000;
+if(n>1600){count.textContent=n.toLocaleString()+" / 2,000";}else{count.textContent="";}
+count.classList.toggle("warn",n>1850&&n<=2000);
+count.classList.toggle("over",n>2000);
+}
+ta.addEventListener("input",upd);
+ta.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!send.disabled){if(form.requestSubmit){form.requestSubmit();}else{form.submit();}}}});
+upd();
+})();</script>"""
+
+
+def _msg_dt(ts):
+    """Parse a message created_at (SQLite text or Postgres datetime) for display."""
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        return ts.replace(tzinfo=None)
+    try:
+        dt = datetime.fromisoformat(str(ts).strip().replace("Z", ""))
+        return dt.replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _msg_clock(dt):
+    return dt.strftime("%I:%M %p").lstrip("0") if dt else ""
+
+
+def _msg_day_label(dt):
+    if not dt:
+        return ""
+    today = date.today()
+    d = dt.date()
+    if d == today:
+        return "Today"
+    if d == today - timedelta(days=1):
+        return "Yesterday"
+    if d.year == today.year:
+        return dt.strftime("%a, %b ") + str(d.day)
+    return dt.strftime("%a, %b ") + str(d.day) + dt.strftime(", %Y")
+
+
+def _msg_list_time(dt):
+    if not dt:
+        return ""
+    today = date.today()
+    d = dt.date()
+    if d == today:
+        return _msg_clock(dt)
+    if d == today - timedelta(days=1):
+        return "Yesterday"
+    if d.year == today.year:
+        return dt.strftime("%b ") + str(d.day)
+    return dt.strftime("%b ") + str(d.day) + dt.strftime(", %Y")
+
+
+def _msg_loc(user_id, other_id):
+    """(same_area, other_checkin) from real current check-ins."""
+    mine = current_checkin(user_id)
+    theirs = current_checkin(other_id)
+    same = bool(mine and theirs and area_matches(theirs, mine["airport_code"], mine["city"]))
+    return same, theirs
+
+
+def _loc_segments(same, theirs, meta_parts):
+    """Green same-area (or muted elsewhere) location segment + meta parts."""
+    segs = []
+    if theirs:
+        loc = esc(theirs["airport_code"]) + " · " + esc(theirs["city"])
+        if same:
+            segs.append('<span class="mc-loc">● Same area · ' + loc + "</span>")
+        else:
+            segs.append('<span class="mc-loc-away">' + loc + "</span>")
+    segs += [esc(p) for p in meta_parts if p]
+    return " · ".join(segs)
+
+
+def _inbox_pane_html(user, db, active_id=None):
+    """Left pane of the Messages shell: title + total unread, search, rows."""
     rows = _conversation_rows(user["id"])
     convos, order = {}, []
     for r in rows:
@@ -4975,17 +5204,65 @@ def _messages_html(user, db):
             order.append(oid)
         if r["recipient_id"] == user["id"] and not r["is_read"]:
             convos[oid]["unread"] += 1
+    total_unread = sum(c["unread"] for c in convos.values())
+    people = {u["id"]: u for u in db.execute(
+        "SELECT id, name, airline, base, aircraft FROM users").fetchall()}
+    items = ""
+    for oid in order:
+        c = convos[oid]
+        o = people.get(oid)
+        name = (o["name"] if o else c["name"]) or ""
+        latest = c["latest"]
+        dt = _msg_dt(latest["created_at"])
+        snip = latest["body"] or ""
+        if latest["sender_id"] == user["id"]:
+            snip = "You: " + snip
+        unread = c["unread"]
+        ucls = " unread" if unread else ""
+        badge = f'<span class="mc-badge">{unread}</span>' if unread else ""
+        acls = " active" if active_id == oid else ""
+        same, theirs = _msg_loc(user["id"], oid)
+        dot = '<span class="mc-dot"></span>' if theirs else ""
+        meta = _loc_segments(same, theirs, [o["airline"], o["base"], o["aircraft"]] if o else [])
+        items += (
+            f'<a class="mc-conv{acls}" href="{url_for("conversation", user_id=oid)}" '
+            f'data-name="{esc(name.lower())}">'
+            f'<span class="mc-ava">{_avatar_html(oid, 50)}{dot}</span>'
+            f'<span class="mc-main"><span class="mc-top"><span class="mc-name">{esc(name)}</span>'
+            f'<span class="mc-time{ucls}">{esc(_msg_list_time(dt))}</span></span>'
+            f'<span class="mc-sub">{meta}</span>'
+            f'<span class="mc-sniprow"><span class="mc-snip{ucls}">{esc(snip)}</span>{badge}</span>'
+            f'</span></a>')
+    pill = f'<span class="mc-pill">{total_unread}</span>' if total_unread else ""
+    head = (f'<div class="mc-inbox-head"><div class="mc-title-row"><h2>Messages {pill}</h2>'
+            f'<a class="mc-new" href="{url_for("messages")}#message-new">{_MC_SVG_PENCIL}New</a></div>'
+            f'<div class="mc-search">{_MC_SVG_SEARCH}'
+            f'<input id="mc_conv_search" placeholder="Search connections" '
+            f'aria-label="Search conversations by first letter" autocomplete="off">'
+            f'<button type="button" class="mc-clear" id="mc_conv_clear" aria-label="Clear search" style="display:none">✕</button></div>'
+            f'<p class="mc-search-meta" id="mc_conv_meta"></p></div>')
     if order:
-        items = "".join(
-            f'<li class="person-row"><span class="p-ava">{_avatar_html(oid, 46)}</span>'
-            f'<div class="p-main"><div class="p-name">'
-            f'<a href="{url_for("conversation", user_id=oid)}">{esc(convos[oid]["name"])}</a></div>'
-            f'<div class="p-meta">{esc((convos[oid]["latest"]["body"] or "")[:80])}</div></div>'
-            f'{" <span class=\"msgdot\">" + str(convos[oid]["unread"]) + "</span>" if convos[oid]["unread"] else ""}</li>'
-            for oid in order)
-        inbox = f'<div class="card mini"><h2>Conversations</h2><ul class="person-list">{items}</ul></div>'
+        lst = (f'<div class="mc-list" id="mc_list">{items}'
+               f'<div class="mc-nomatch" id="mc_nomatch" style="display:none">'
+               f'<p class="mc-nomatch-t">No matches</p><p class="muted">Nothing here starts with that yet. '
+               f'Clear the search to see all your conversations.</p></div></div>')
     else:
-        inbox = '<div class="card mini"><h2>Conversations</h2><p class="muted">No messages yet.</p></div>'
+        lst = '<div class="mc-list"><p class="muted" style="padding:12px 10px">No messages yet.</p></div>'
+    return f'<div class="mc-inbox">{head}{lst}</div>{MC_INBOX_JS}'
+
+
+def _messages_html(user, db):
+    empty = ('<div class="mc-thread"><div class="mc-thread-head">'
+             '<span class="mc-ava mc-ava-ph">✉️</span>'
+             '<div class="mc-who"><div class="mc-tname">Messages</div>'
+             '<div class="mc-sub">Pick a conversation</div></div></div>'
+             '<div class="mc-empty"><h3>Pick a conversation</h3>'
+             '<p class="muted">Choose someone on the left, or tap New to message one of your connections.</p></div></div>')
+    shell = f'<div class="mc-shell">{_inbox_pane_html(user, db)}{empty}</div>'
+    rows = _conversation_rows(user["id"])
+    convos = set()
+    for r in rows:
+        convos.add(r["recipient_id"] if r["sender_id"] == user["id"] else r["sender_id"])
     others = db.execute(
         "SELECT id, name, airline, base FROM users WHERE id != ? ORDER BY name", (user["id"],)).fetchall()
     fresh = [o for o in others if o["id"] not in convos]
@@ -5001,7 +5278,7 @@ def _messages_html(user, db):
                 f'<a href="{url_for("conversation", user_id=o["id"])}">{esc(o["name"])}</a></div>'
                 f'<div class="p-meta">{_ometa}</div></div>'
                 f'<a class="p-btn" href="{url_for("conversation", user_id=o["id"])}">Message</a></li>')
-        new_card = (f'<div class="card mini"><h2>Message someone new</h2>'
+        new_card = (f'<div class="card mini" id="message-new"><h2>Message someone new</h2>'
                     f'<p class="muted">Anyone registered — no need to be friends first.</p>'
                     f'<div class="mini-search"><input id="pilot_search" placeholder="Type a connection\u2019s name\u2026" autocomplete="off"></div>'
                     f'<p class="muted" id="pilot_count"></p>'
@@ -5016,7 +5293,93 @@ def _messages_html(user, db):
                     f'input.addEventListener("input",filter);filter();}})();</script>')
     else:
         new_card = ""
-    return inbox + new_card
+    return shell + new_card
+
+
+def _thread_pane_html(user, db, other):
+    """Right pane of the Messages shell: header, banner, grouped bubbles, composer."""
+    oid = other["id"]
+    same, theirs = _msg_loc(user["id"], oid)
+    orow = db.execute("SELECT airline, base, aircraft FROM users WHERE id = ?", (oid,)).fetchone()
+    meta_parts = [orow["airline"], orow["base"], orow["aircraft"]] if orow else []
+    meta = _loc_segments(same, theirs, meta_parts)
+    dot = '<span class="mc-dot"></span>' if theirs else ""
+    head = (f'<div class="mc-thread-head">'
+            f'<a class="mc-back" href="{url_for("messages")}" aria-label="Back to conversations">{_MC_SVG_CHEV}</a>'
+            f'<span class="mc-ava">{_avatar_html(oid, 46)}{dot}</span>'
+            f'<div class="mc-who"><div class="mc-tname">{esc(other["name"])}</div>'
+            f'<div class="mc-sub">{meta}</div></div></div>')
+    banner = ""
+    if theirs:
+        loc = esc(theirs["airport_code"]) + " · " + esc(theirs["city"])
+        if same:
+            banner = (f'<div class="mc-banner">{_MC_SVG_PIN}<span>You’re both checked in around '
+                      f'<b>{loc}</b> — a good moment to swap local tips or make a plan.</span></div>')
+        else:
+            first = (other["name"] or "").split()[0] if other["name"] else "They"
+            banner = (f'<div class="mc-banner">{_MC_SVG_PIN}<span>{esc(first)} is checked in around '
+                      f'<b>{loc}</b>.</span></div>')
+    rows = db.execute(
+        "SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) "
+        "OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at ASC, id ASC",
+        (user["id"], oid, oid, user["id"])).fetchall()
+    if not rows:
+        first = (other["name"] or "").split()[0] if other["name"] else "there"
+        gmeta = " · ".join(x for x in ["Your connection"] + list(meta_parts) if x)
+        msgs = (f'<div class="mc-greet">{_avatar_html(oid, 64)}'
+                f'<h3>Say hello to {esc(first)}</h3>'
+                f'<p class="muted">{esc(gmeta)}. First messages here usually start with '
+                f'where you’re both headed.</p></div>')
+    else:
+        # Group into days, then into consecutive-sender runs.
+        runs = []  # (day_label, mine, [(row, dt), ...])
+        for r in rows:
+            dt = _msg_dt(r["created_at"])
+            label = _msg_day_label(dt)
+            mine = r["sender_id"] == user["id"]
+            if runs and runs[-1][0] == label and runs[-1][1] == mine:
+                runs[-1][2].append((r, dt))
+            else:
+                runs.append((label, mine, [(r, dt)]))
+        # The read/sent receipt goes under the viewer's latest own run.
+        target_idx = None
+        for idx in range(len(runs) - 1, -1, -1):
+            if runs[idx][1]:
+                target_idx = idx
+                break
+        parts = []
+        cur_day = None
+        for run_idx, (label, mine, run_rows) in enumerate(runs):
+            if label != cur_day:
+                parts.append(f'<div class="mc-day"><span>{esc(label)}</span></div>')
+                cur_day = label
+            for i, (r, dt) in enumerate(run_rows):
+                tail = i == len(run_rows) - 1
+                ava = ""
+                if not mine:
+                    ava = (f'<span class="mc-tava">{_avatar_html(oid, 28)}</span>' if tail
+                           else '<span class="mc-ghost"></span>')
+                cls = " mine" if mine else ""
+                tcls = " tail" if tail else ""
+                bcls = "mine" if mine else "theirs"
+                parts.append(f'<div class="mc-row{cls}{tcls}">{ava}'
+                             f'<div class="mc-bubble {bcls}">{esc(r["body"])}</div></div>')
+            receipt = ""
+            if run_idx == target_idx:
+                receipt = (' <span class="mc-read">✓✓ Read</span>' if run_rows[-1][0]["is_read"]
+                           else ' <span class="mc-sent">Sent</span>')
+            mcls = " mine" if mine else " theirs"
+            parts.append(f'<div class="mc-meta{mcls}">{esc(_msg_clock(run_rows[-1][1]))}{receipt}</div>')
+        msgs = "".join(parts)
+    composer = (f'<form method="post" class="mc-composer" id="mc_form">'
+                f'<div class="mc-composer-inner">'
+                f'<textarea name="body" id="mc_input" rows="1" maxlength="2000" '
+                f'placeholder="Message…" aria-label="Message"></textarea>'
+                f'<button type="submit" class="mc-send" id="mc_send" aria-label="Send" disabled>{_MC_SVG_PLANE}</button></div>'
+                f'<div class="mc-composer-foot"><span>Enter to send · Shift + Enter for a new line</span>'
+                f'<span class="mc-count" id="mc_count"></span></div></form>')
+    return (f'<div class="mc-thread">{head}{banner}'
+            f'<div class="mc-msgs" id="mc_msgs">{msgs}</div>{composer}</div>{MC_THREAD_JS}')
 
 
 @app.route("/messages/<int:user_id>", methods=["GET", "POST"])
@@ -5039,30 +5402,10 @@ def conversation(user_id):
     db.execute("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND recipient_id = ? AND is_read = 0",
                (other["id"], user["id"]))
     db.commit()
-    rows = db.execute(
-        "SELECT * FROM messages WHERE (sender_id = ? AND recipient_id = ?) "
-        "OR (sender_id = ? AND recipient_id = ?) ORDER BY created_at DESC, id DESC",
-        (user["id"], other["id"], other["id"], user["id"])).fetchall()
-    msg_html = []
-    for r in rows:
-        mine = r["sender_id"] == user["id"]
-        style = ("margin-left:24px;background:#0284c7;border-color:#38bdf8" if mine
-                 else "margin-right:24px")
-        ts_style = ' style="color:#e0f2fe"' if mine else ""
-        who = "You" if mine else other["name"]
-        msg_html.append(
-            f'<div class="card" style="{style}">'
-            f'<p style="margin:0 0 4px"><strong>{esc(who)}</strong> '
-            f'<span class="muted"{ts_style}>{esc(str(r["created_at"])[:16])}</span></p>'
-            f'<p style="margin:0;white-space:pre-wrap">{esc(r["body"])}</p></div>')
-    msgs = "".join(msg_html) or '<p class="muted">No messages yet — say hello.</p>'
-    body = (f'<div class="card"><h2>{_avatar_html(other["id"], 40)}{esc(other["name"])}</h2>'
-            f'<form method="post"><label>Message</label>'
-            f'<textarea name="body" rows="3" required placeholder="Write a message…"></textarea>'
-            f'<button type="submit">Send</button></form>'
-            f'<p><a href="{url_for("messages")}">Back to messages</a></p></div>'
-            f'{msgs}')
-    return page("Messages", user, body)
+    shell = (f'<div class="mc-shell mc-showthread">'
+             f'{_inbox_pane_html(user, db, active_id=other["id"])}'
+             f'{_thread_pane_html(user, db, other)}</div>')
+    return page("Messages", user, shell)
 
 # ---------------------------------------------------------------- PWA
 PWA_ICON_SVG = (
