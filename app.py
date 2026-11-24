@@ -1227,6 +1227,42 @@ label{font-weight:600}.muted{color:#a9cdec}.stars{color:#f5b93f;letter-spacing:2
 .rc-contact a{color:#a9cdec}
 .rc-actions{margin-top:10px}
 .rc-actions .rc-links{margin:8px 0 0}
+/* Search-result card ported from the search-results-redesign rendition:
+   full-bleed hero photo with the distance badge on it, then a body column
+   (numbered name, public rating, boxed crew score, meta, tags, quote) and
+   one action row (attach CTA + Call/Directions icon buttons). Scoped to
+   .xcard so the legacy FBO renderer (.rc-*) is untouched. */
+.xcard{padding:0;overflow:hidden;border-radius:18px;background:rgba(8,42,78,.86);border:1px solid rgba(120,190,255,.20);display:flex;flex-direction:column}
+.xc-hero{position:relative;flex:0 0 auto}
+.xc-photo{width:100%;height:158px;object-fit:cover;display:block;border:0;border-radius:0}
+.xc-photo-ph{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#063a6b 0%,#0086E8 130%);color:rgba(255,255,255,.92);font-weight:800;font-size:64px}
+.xc-hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,24,46,0) 42%,rgba(4,24,46,.5) 100%);pointer-events:none}
+.xc-dist{position:absolute;left:12px;bottom:12px;z-index:1;background:#fff;color:#04182e;border-radius:12px;padding:6px 11px;display:flex;flex-direction:column;line-height:1.05;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.xc-dist-num{font-size:19px;font-weight:800}
+.xc-dist-mi{font-size:12px;font-weight:700}
+.xc-dist-sub{font-size:10.5px;font-weight:700;letter-spacing:.09em;color:#3d6a94}
+.xc-body{padding:15px 16px 16px;display:flex;flex-direction:column;gap:9px;min-width:0}
+.xc-name{font-size:19px;font-weight:800;line-height:1.25}
+.xc-name a{color:#f2f8ff;text-decoration:none}
+.xc-num{color:#4fc3ff}
+.xc-stars{color:#f5b93f;font-size:15px;font-weight:700}
+.xc-stars .xc-pub{color:#a9cdec;font-weight:400}
+.xc-crew{display:flex;align-items:center;gap:9px;background:rgba(79,195,255,.10);border:1px solid rgba(120,190,255,.20);border-radius:10px;padding:8px 11px;font-weight:700;font-size:15px;color:#f2f8ff}
+.xc-crew-badge{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;font-weight:800;border-radius:8px;padding:3px 9px;font-size:15px}
+.xc-crew-n{color:#a9cdec;font-weight:400}
+.xc-meta{color:#a9cdec;font-size:14px}
+.xc-meta a{color:#a9cdec}
+.xc-tags{margin:-2px}
+.xc-tags .tag{margin:2px}
+.tag-more{background:transparent;border:1px dashed rgba(140,200,255,.5);color:#8fd4ff}
+.xc-quote{color:#d6e9ff;font-style:italic;font-size:14px;border-left:3px solid rgba(79,195,255,.45);padding-left:10px}
+.xc-quote-by{font-style:normal;color:#a9cdec}
+.xc-actions{display:flex;gap:9px;align-items:stretch}
+.xc-actions form{flex:1;margin:0!important}
+.xc-actions form button{height:48px;min-height:48px;border-radius:12px}
+.xc-icon{flex:0 0 48px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:rgba(79,195,255,.12);border:1px solid rgba(120,190,255,.35);color:#8fd4ff;box-sizing:border-box}
+.xc-icon svg{width:22px;height:22px;fill:currentColor}
+.xc-addrev{display:block;text-align:center;padding:9px;border:1px solid rgba(120,190,255,.35);border-radius:10px;color:#8fd4ff;font-weight:600;font-size:14px;text-decoration:none}
 .num-pin-wrap{background:none;border:none}
 .num-pin{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;font-weight:800;font-size:14px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .search-empty{border:1px dashed rgba(140,200,255,.4);border-radius:12px;padding:18px 14px;text-align:center;margin:12px 0 4px}
@@ -1297,6 +1333,19 @@ html.light .rc-quote-by{color:#64748b}
 html.light .rc-contact{color:#64748b}
 html.light .rc-contact a{color:#64748b}
 html.light .rc-photo-ph{background:#e0f2fe;color:#0284c7}
+html.light .xcard{background:#fff;border-color:#e2e8f0}
+html.light .xc-name a{color:#0c2531}
+html.light .xc-num{color:#0284c7}
+html.light .xc-stars .xc-pub{color:#64748b}
+html.light .xc-crew{background:#e0f2fe;border-color:#bae6fd;color:#0c2531}
+html.light .xc-crew-n{color:#64748b}
+html.light .xc-meta{color:#64748b}
+html.light .xc-meta a{color:#64748b}
+html.light .tag-more{background:transparent;border-color:#94a3b8;color:#0369a1}
+html.light .xc-quote{color:#334155;border-left-color:rgba(2,132,199,.4)}
+html.light .xc-quote-by{color:#64748b}
+html.light .xc-icon{background:#f1f5f9;border-color:#cbd5e1;color:#0284c7}
+html.light .xc-addrev{border-color:#cbd5e1;color:#0369a1}
 html.light .topbar{background:rgba(233,242,238,.92);border-bottom-color:#cbd5e1}
 html.light .topnav a{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-color:transparent}
 html.light .topnav a.on{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-color:transparent}
@@ -4036,7 +4085,7 @@ def _crew_for_places(kind, names, user):
         key = _normalize_place_name(r["place_name"] or "")
         if key not in wanted:
             continue
-        a = out.setdefault(key, {"total": 0, "n": 0, "tags": [], "quote": None})
+        a = out.setdefault(key, {"total": 0, "n": 0, "tags": [], "tags_all": [], "quote": None})
         try:
             a["total"] += int(r["rating"] or 0)
         except (TypeError, ValueError):
@@ -4044,12 +4093,15 @@ def _crew_for_places(kind, names, user):
         a["n"] += 1
         for t in (r["tags"] or "").split(","):
             t = t.strip()
+            if t and t not in a["tags_all"]:
+                a["tags_all"].append(t)
             if t and t not in a["tags"] and len(a["tags"]) < 3:
                 a["tags"].append(t)
         if a["quote"] is None and (r["notes"] or "").strip():
             a["quote"] = ((r["notes"] or "").strip(), _author_name(r))
     for a in out.values():
         a["avg"] = a["total"] / a["n"] if a["n"] else None
+        a["tags_total"] = len(a["tags_all"])
     return out
 
 
@@ -4154,6 +4206,10 @@ def _fbo_results_html(kind, data, user, with_map=True):
     return header + map_toggle + map_html + search_html + '<div id="result_list">' + cards + '</div>'
 
 
+_PHONE_SVG = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>')
+_NAV_SVG = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.71 11.29l-9-9C12.53 2.11 12.28 2 12 2c-.28 0-.53.11-.71.29l-9 9C2.11 11.47 2 11.72 2 12c0 .28.11.53.29.71l9 9c.18.18.43.29.71.29.28 0 .53-.11.71-.29l9-9c.18-.18.29-.43.29-.71 0-.28-.11-.53-.29-.71zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/></svg>')
+
+
 def external_results_html(kind, data, user, with_map=True):
     if kind == "fbo":
         # Only the three search tabs are redesigned — FBO rendering (the
@@ -4186,79 +4242,89 @@ def external_results_html(kind, data, user, with_map=True):
     cards = ""
     for i, r in enumerate(results):
         num = i + 1
-        detail = ""
-        if kind == "hotel":
-            if r.get("brand") and r["brand"] != r["name"]:
-                detail = f"<div>{esc(r['brand'])}</div>"
-        elif kind == "restaurant":
-            if r.get("cuisine"):
-                detail += f"<div>{esc(r['cuisine'])}</div>"
-            if r.get("hours"):
-                detail += f"<div>{esc(r['hours'])}</div>"
-        elif kind == "fbo" and r.get("brand"):
-            detail = f"<div>{esc(r['brand'])}</div>"
-        elif r.get("atype"):
-            detail = f"<div>{esc(r['atype'])}</div>"
         if r.get("lat") is not None and r.get("lon") is not None:
             durl = _directions_url(r["lat"], r["lon"], r["name"])
         else:
             durl = _map_search_url(f"{r['name']}, {place['city']}")
+        # Meta line (rendition order: after the crew row, before the tags):
+        # the kind detail — brand / cuisine + hours / type — plus the address.
+        meta_parts = []
+        if kind == "hotel":
+            if r.get("brand") and r["brand"] != r["name"]:
+                meta_parts.append(esc(r["brand"]))
+        elif kind == "restaurant":
+            if r.get("cuisine"):
+                meta_parts.append(esc(r["cuisine"]))
+            if r.get("hours"):
+                meta_parts.append(esc(r["hours"]))
+        elif r.get("atype"):
+            meta_parts.append(esc(r["atype"]))
         if r.get("address"):
-            addr = (f'<div><a href="{esc(durl)}" target="_blank" '
-                    f'rel="noopener">{esc(r["address"])}</a></div>')
-        else:
-            addr = ""
-        phone = (f"<div><a href=\"tel:{esc(r['phone'])}\">{esc(r['phone'])}</a></div>"
-                 if r.get("phone") else "")
-        contact = f'<div class="rc-contact">{addr}{phone}</div>' if (addr or phone) else ""
+            meta_parts.append(f'<a href="{esc(durl)}" target="_blank" '
+                              f'rel="noopener">{esc(r["address"])}</a>')
+        meta_html = (f'<div class="xc-meta">{" · ".join(meta_parts)}</div>'
+                     if meta_parts else "")
         rating_html = ""
         if r.get("rating") is not None:
-            cnt = (f' <span class="rc-count">({r["review_count"]} reviews)</span>'
+            cnt = (f' <span class="xc-pub">· {r["review_count"]} public reviews</span>'
                    if r.get("review_count") else "")
-            rating_html = f'<div class="rc-stars">★ {r["rating"]}{cnt}</div>'
-        photo_html = ""
+            rating_html = f'<div class="xc-stars">★ {r["rating"]}{cnt}</div>'
+        # Hero: the real per-place photo full-bleed, or an initial placeholder
+        # hero for places with no photo. The white distance badge sits on it.
         if r.get("image"):
-            photo_html = (f'<img class="rc-photo" src="{esc(r["image"])}" alt="" loading="lazy">')
+            photo_html = (f'<img class="xc-photo" src="{esc(r["image"])}" alt="" loading="lazy">')
         elif r.get("logo"):
-            photo_html = (f'<img class="rc-photo" src="{esc(r["logo"])}" alt="" loading="lazy">')
+            photo_html = (f'<img class="xc-photo" src="{esc(r["logo"])}" alt="" loading="lazy">')
         else:
             initial = (r["name"] or "?").strip()[:1].upper() or "?"
-            photo_html = f'<div class="rc-photo rc-photo-ph">{esc(initial)}</div>'
+            photo_html = f'<div class="xc-photo xc-photo-ph">{esc(initial)}</div>'
+        dist_html = (f'<div class="xc-dist"><span><span class="xc-dist-num">{r["distance"]}</span> '
+                     f'<span class="xc-dist-mi">mi</span></span>'
+                     f'<span class="xc-dist-sub">FROM YOU</span></div>')
+        hero_html = f'<div class="xc-hero">{photo_html}{dist_html}</div>'
         # Crew score, tags and quote from pilot reviews of this place.
         c = crew.get(_normalize_place_name(r["name"]))
         crew_html = ""
         tags_html = ""
         quote_html = ""
         if c and c["n"]:
-            crew_html = (f'<div class="rc-crew">Crew ★ {c["avg"]:.1f} '
-                         f'<span class="rc-count">({c["n"]} pilot review{"s" if c["n"] != 1 else ""})</span></div>')
+            crew_html = (f'<div class="xc-crew"><span class="xc-crew-badge">{c["avg"]:.1f}</span>'
+                         f'Crew score <span class="xc-crew-n">· {c["n"]} pilot review{"s" if c["n"] != 1 else ""}</span></div>')
             if c["tags"]:
-                tags_html = ('<div>' + "".join(f'<span class="tag">{esc(t)}</span>' for t in c["tags"]) + '</div>')
+                pills = "".join(f'<span class="tag">{esc(t)}</span>' for t in c["tags"])
+                more = (c.get("tags_total") or len(c["tags"])) - len(c["tags"])
+                if more > 0:
+                    pills += f'<span class="tag tag-more">+{more} more</span>'
+                tags_html = f'<div class="xc-tags">{pills}</div>'
             if c["quote"]:
                 qtext, qauthor = c["quote"]
                 if len(qtext) > 140:
                     qtext = qtext[:137].rstrip() + "…"
-                quote_html = (f'<div class="rc-quote">“{esc(qtext)}” '
-                              f'<span class="rc-quote-by">— {esc(qauthor)}</span></div>')
+                quote_html = (f'<div class="xc-quote">“{esc(qtext)}” '
+                              f'<span class="xc-quote-by">— {esc(qauthor)}</span></div>')
         # Tapping a result name opens the place in the device's own map app
         # (Apple Maps on Apple devices, Google Maps elsewhere) — at the exact
         # coordinates when known, by name + city search when not.
         name_html = (f'<a href="{esc(durl)}" target="_blank" rel="noopener">'
-                     f'<strong>{esc(r["name"])}</strong></a>')
+                     f'<span class="xc-num">{num}.</span> {esc(r["name"])}</a>')
         add = (url_for("new_review") + "?" + urllib.parse.urlencode(
             {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"],
              "phone": r["phone"] or "", "address": r["address"] or "",
              "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
-        acts = []
+        # One action row: the attach CTA (flex:1) beside 48px icon buttons
+        # for Call (only when a phone number exists) and Directions. Add
+        # review stays as a secondary outline button under the row — the
+        # rendition has no Add review, but the live feature must remain.
+        call_btn = ""
         if r.get("phone"):
-            acts.append(f'<a href="tel:{esc(r["phone"])}">Call</a>')
-        acts.append(f'<a href="{esc(durl)}" target="_blank" rel="noopener">Directions</a>')
-        acts.append(f'<a href="{add}">Add review</a>')
-        action_html = (f'<div class="rc-actions">{_attach_button(kind, place, r["name"])}'
-                       f'<p class="rc-links">{" · ".join(acts)}</p></div>')
-        cards += f"""<div class="card result-card" data-name="{esc(r['name'].lower())}"><div class="rc-top">{photo_html}<div class="rc-body"><span class="rc-num">{num}</span>{name_html} <span class="dist-badge dist-badge-big">{r['distance']} mi from you</span>
-          {rating_html}{crew_html}{tags_html}{quote_html}{detail}{contact}</div></div>
-          {action_html}</div>"""
+            call_btn = (f'<a class="xc-icon" href="tel:{esc(r["phone"])}" '
+                        f'aria-label="Call" title="Call">{_PHONE_SVG}</a>')
+        dir_btn = (f'<a class="xc-icon" href="{esc(durl)}" target="_blank" rel="noopener" '
+                   f'aria-label="Directions" title="Directions">{_NAV_SVG}</a>')
+        action_html = (f'<div class="xc-actions">{_attach_button(kind, place, r["name"])}{call_btn}{dir_btn}</div>'
+                       f'<a class="xc-addrev" href="{add}">+ Add review</a>')
+        cards += f"""<div class="card result-card xcard" data-name="{esc(r['name'].lower())}">{hero_html}<div class="xc-body"><div class="xc-name">{name_html}</div>
+          {rating_html}{crew_html}{meta_html}{tags_html}{quote_html}{action_html}</div></div>"""
     return header + map_toggle + map_html + '<div id="result_list">' + cards + '</div>'
 
 @app.route("/attractions", methods=["GET", "POST"])
