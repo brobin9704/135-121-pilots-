@@ -1216,6 +1216,22 @@ label{font-weight:600}.muted{color:#a9cdec}.stars{color:#f5b93f;letter-spacing:2
 .rc-body{flex:1;min-width:0}
 .rc-stars{color:#f5b93f;letter-spacing:1px;font-size:14px;margin:2px 0}
 .rc-stars .rc-count{color:#a9cdec;letter-spacing:0}
+.dist-badge-big{font-size:16px;padding:6px 14px}
+.rc-num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;font-weight:800;font-size:14px;margin-right:6px;vertical-align:middle;flex:0 0 auto}
+.rc-photo-ph{display:flex;align-items:center;justify-content:center;background:rgba(79,195,255,.18);color:#8fd4ff;font-weight:800;font-size:34px}
+.rc-crew{color:#8fd4ff;font-size:14px;font-weight:700;margin:4px 0}
+.rc-crew .rc-count{color:#a9cdec;font-weight:400}
+.rc-quote{color:#d6e9ff;font-style:italic;font-size:14px;margin:6px 0;border-left:3px solid rgba(79,195,255,.45);padding-left:10px}
+.rc-quote-by{font-style:normal;color:#a9cdec}
+.rc-contact{color:#a9cdec;font-size:14px;margin:4px 0}
+.rc-contact a{color:#a9cdec}
+.rc-actions{margin-top:10px}
+.rc-actions .rc-links{margin:8px 0 0}
+.num-pin-wrap{background:none;border:none}
+.num-pin{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;font-weight:800;font-size:14px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+.search-empty{border:1px dashed rgba(140,200,255,.4);border-radius:12px;padding:18px 14px;text-align:center;margin:12px 0 4px}
+.search-empty p{margin:4px 0}
+input:disabled{opacity:.55}
 .map-toggle{background:none;border:1px solid rgba(140,200,255,.4);color:#f2f8ff;border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer;min-height:44px}
 html.hide-resultsmap .resultsmap{display:none}
 .hero{position:relative;border-radius:20px;overflow:hidden;padding:26px 24px;margin:14px 0 20px;background:rgba(8,42,78,.82);border:1px solid rgba(140,200,255,.22);display:flex;gap:18px;align-items:center}
@@ -1274,6 +1290,13 @@ html.light .rc-photo{border-color:#cbd5e1}
 html.light .map-toggle{border-color:#cbd5e1;color:#0c2531}
 html.light .dist-badge{background:#4fc3ff;color:#04182e}
 html.light .rc-stars .rc-count{color:#64748b}
+html.light .rc-crew{color:#0284c7}
+html.light .rc-crew .rc-count{color:#64748b}
+html.light .rc-quote{color:#334155;border-left-color:rgba(2,132,199,.4)}
+html.light .rc-quote-by{color:#64748b}
+html.light .rc-contact{color:#64748b}
+html.light .rc-contact a{color:#64748b}
+html.light .rc-photo-ph{background:#e0f2fe;color:#0284c7}
 html.light .topbar{background:rgba(233,242,238,.92);border-bottom-color:#cbd5e1}
 html.light .topnav a{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-color:transparent}
 html.light .topnav a.on{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;border-color:transparent}
@@ -1700,7 +1723,12 @@ MINIMAP_JS = """
         if(p.you){
           L.marker([p.lat,p.lon],{icon:L.divIcon({className:"you-pin-wrap",html:'<div class="you-pin-shape"></div>',iconSize:[28,28],iconAnchor:[14,28]})}).addTo(m).bindPopup("You are here");
         }else{
-          L.marker([p.lat,p.lon]).addTo(m).bindPopup(escHtml(p.name));
+          var num=p.num?String(p.num):"";
+          if(num){
+            L.marker([p.lat,p.lon],{icon:L.divIcon({className:"num-pin-wrap",html:'<div class="num-pin">'+escHtml(num)+'</div>',iconSize:[28,28],iconAnchor:[14,28]})}).addTo(m).bindPopup(escHtml(p.name));
+          }else{
+            L.marker([p.lat,p.lon]).addTo(m).bindPopup(escHtml(p.name));
+          }
         }
         bounds.push([p.lat,p.lon]);
       });
@@ -1726,6 +1754,11 @@ RESULT_SEARCH_JS = """
   var count = document.getElementById("result_count");
   var none = document.getElementById("result_none");
   function run(){
+    if(!cards.length){
+      if(count)count.textContent="";
+      if(none)none.style.display="none";
+      return;
+    }
     var q = box.value.trim().toLowerCase();
     var shown = 0;
     for(var i = 0; i < cards.length; i++){
@@ -3846,26 +3879,40 @@ def load_search_cache(user_id, kind, checkin):
     centre = tuple(json.loads(row["centre"])) if row["centre"] else None
     return row["radius"], centre, json.loads(row["results"] or "[]")
 
-def at_location_section(kind, user, radius_options, default_radius):
-    """The 'at my location' card: check-in location and/or one-tap GPS.
-    GPS coordinates are used for that one search only — never stored, no tracking.
-    Search results are kept until the pilot checks in somewhere else."""
-    checkin = current_checkin(user["id"])
-    radius_raw = (request.form.get("radius") if request.method == "POST"
-                  else request.args.get("radius")) or str(default_radius)
+SEARCH_RADIUS = {"hotel": 2, "restaurant": 2, "attraction": 10}
+
+def _gps_cache_lookup(user_id, kind, lat, lon, radius):
+    """Cached results for a repeat Search at the same spot (rounded coords).
+    The cache is only ever read after the user taps Search — never on page open."""
+    row = get_db().execute(
+        "SELECT radius, centre, results FROM search_cache WHERE user_id=? AND kind=?",
+        (user_id, kind)).fetchone()
+    if not row or not row["centre"]:
+        return None
     try:
-        radius = int(radius_raw)
-    except ValueError:
-        radius = default_radius
-    # Hotels and restaurants: 2/5/10/20 miles; attractions: 5/10/20. Capped at 20.
-    if kind == "attraction":
-        radius_options = [5, 10, 20]
-    else:
-        radius_options = [2, 5, 10, 20]
-    radius = max(1, min(radius, 20))
+        if int(row["radius"]) != radius:
+            return None
+        clat, clon = json.loads(row["centre"])
+    except (TypeError, ValueError):
+        return None
+    if round(float(clat), 4) == round(lat, 4) and round(float(clon), 4) == round(lon, 4):
+        try:
+            return json.loads(row["results"] or "[]")
+        except (TypeError, ValueError):
+            return None
+    return None
+
+def at_location_section(kind, user):
+    """GPS-only search. One Search button; the tab opens empty.
+    GPS coordinates are used for that one search only — never stored as a
+    location, no tracking. A repeat Search at the same spot reuses the
+    cached results; the cache is never auto-loaded on page open."""
+    radius = SEARCH_RADIUS[kind]
     data = None
     gps_error = None
+    searched = False
     if request.method == "POST" and request.form.get("gps") == "1":
+        searched = True
         try:
             lat = float(request.form.get("lat", ""))
             lon = float(request.form.get("lon", ""))
@@ -3875,62 +3922,51 @@ def at_location_section(kind, user, radius_options, default_radius):
             lat = lon = None
             gps_error = "Could not read your location. Try again."
         if lat is not None:
+            # Nearest airport gives the Add review / attach buttons an airport + city.
             code, city, _name, _dist = nearest_airport_for(lat, lon)
-            centre, results, error = places_at_coords(
-                lat, lon, radius, kind, display="your current location", city_hint=city or "")
-            # Nearest airport gives the Add review / Check in buttons an airport + city.
-            data = (centre, results, error, radius,
-                    {"airport_code": code or "", "city": city or ""})
-    elif checkin and request.args.get("at_checkin") == "1":
-        centre, results, error = places_at_checkin(checkin, radius, kind)
-        if results is not None:
-            save_search_cache(user["id"], kind, checkin, radius, centre, results)
-        data = (centre, results, error, radius, checkin)
-    elif checkin:
-        cached = load_search_cache(user["id"], kind, checkin)
-        if cached:
-            radius, centre, results = cached
-            data = (centre, results, None, radius, checkin)
-        else:
-            radius = default_radius
-    radios = "".join(
-        f'<label><input type="radio" name="radius" value="{r}" style="width:auto" {"checked" if r == radius else ""}> {r} miles</label> '
-        for r in radius_options)
-    gps_radios = "".join(
-        f'<label><input type="radio" name="gps_radius" value="{r}" style="width:auto" {"checked" if r == radius else ""}> {r} miles</label> '
-        for r in radius_options)
-    if checkin:
-        checkin_part = (f'<p class="muted">Uses your check-in location: {esc(checkin["airport_code"])} · '
-                        f'{esc(checkin["city"])}.</p>'
-                        f'<form method="get"><input type="hidden" name="at_checkin" value="1">{radios}'
-                        f'<button type="submit">Search {kind}s at airport location</button></form>')
-    else:
-        checkin_part = ('<p class="muted">Check in on the <a href="' + url_for("board") + '">Check-In</a> '
-                        'page to also search around your check-in location.</p>')
-    card = f"""<div class="card"><h2>Search {kind}s at my location</h2>{checkin_part}
-      <p class="muted">Or use your current GPS location — one tap, used for this search only, never stored.</p>
-      <div>{gps_radios}</div>
-      <p><button type="button" id="gps_btn_{kind}">Use my current location</button>
+            place = {"airport_code": code or "", "city": city or ""}
+            cached = _gps_cache_lookup(user["id"], kind, lat, lon, radius)
+            if cached is not None:
+                centre = (lat, lon, "your current location")
+                data = (centre, cached, None, radius, place)
+            else:
+                centre, results, error = places_at_coords(
+                    lat, lon, radius, kind, display="your current location", city_hint=city or "")
+                if results is not None:
+                    save_search_cache(user["id"], kind, place, radius, centre, results)
+                data = (centre, results, error, radius, place)
+    btn_label = "Search again" if searched else f"Search {kind}s near me"
+    bar_state = "" if data else "disabled"
+    empty = "" if data else ('<div class="search-empty"><p><strong>Nothing loaded yet.</strong></p>'
+                             '<p class="muted">Tap Search to find places near your current location.</p></div>')
+    card = f"""<div class="card"><h2>Search {kind}s near me</h2>
+      <p class="muted">Searches around your current location — one tap, used for this search only, never stored.</p>
+      <p><button type="button" id="gps_btn_{kind}">{esc(btn_label)}</button>
       <span class="muted" id="gps_msg_{kind}"></span></p>
       <form id="gps_form_{kind}" method="post" style="display:none">
       <input type="hidden" name="gps" value="1">
-      <input type="hidden" name="radius" id="gps_radius_val_{kind}" value="{radius}">
       <input type="hidden" name="lat" id="gps_lat_{kind}">
-      <input type="hidden" name="lon" id="gps_lon_{kind}"></form></div>
+      <input type="hidden" name="lon" id="gps_lon_{kind}"></form>
+      <div style="margin:12px 0 4px"><input type="search" id="result_search" placeholder="Search by first letter" autocomplete="off" {bar_state} style="width:100%;font-size:16px;padding:10px"></div>
+      <p class="muted" id="result_count" style="margin:4px 0"></p>
+      <p class="muted" id="result_none" style="display:none">No places match.</p>
+      {empty}</div>
       <script>
       (function(){{
         var btn = document.getElementById('gps_btn_{kind}');
         var msg = document.getElementById('gps_msg_{kind}');
         btn.addEventListener('click', function(){{
           if (!navigator.geolocation) {{ msg.textContent = 'Location is not available on this device.'; return; }}
+          btn.disabled = true;
+          btn.textContent = 'Searching…';
           msg.textContent = 'Getting your location…';
           navigator.geolocation.getCurrentPosition(function(pos){{
-            var sel = document.querySelector('input[name="gps_radius"]:checked');
-            document.getElementById('gps_radius_val_{kind}').value = sel ? sel.value : '{radius}';
             document.getElementById('gps_lat_{kind}').value = pos.coords.latitude;
             document.getElementById('gps_lon_{kind}').value = pos.coords.longitude;
             document.getElementById('gps_form_{kind}').submit();
           }}, function(){{
+            btn.disabled = false;
+            btn.textContent = '{esc(btn_label)}';
             msg.textContent = 'Location unavailable — allow location access for this site and try again.';
           }}, {{timeout: 15000, maximumAge: 60000}});
         }});
@@ -3938,7 +3974,7 @@ def at_location_section(kind, user, radius_options, default_radius):
       </script>"""
     if gps_error:
         card += f'<div class="error">{esc(gps_error)}</div>'
-    return card, data, checkin
+    return card, data, searched
 
 def _attach_button(kind, place, name):
     """Attach a search-result place to the current check-in.
@@ -3955,7 +3991,7 @@ def _attach_button(kind, place, name):
             f'<input type="hidden" name="city" value="{esc(place["city"])}">'
             f'<input type="hidden" name="place_name" value="{esc(name)}">'
             f'<input type="hidden" name="kind" value="{kind}">'
-            f'<button type="submit" style="width:auto;padding:6px 12px">{_label}</button></form>')
+            f'<button type="submit">{_label}</button></form>')
 
 def _directions_url(lat, lon, name):
     """Link that opens the place in the device's own map service: Apple Maps on
@@ -3984,7 +4020,43 @@ def _map_search_url(query):
         {"api": "1", "query": query}))
 
 
-def external_results_html(kind, data, user, with_map=True):
+def _crew_for_places(kind, names, user):
+    """Pilot-review aggregates for search-result places, keyed by normalized name.
+    Crew score (avg stars + count), up to 3 tags, and the most recent review
+    with text as a quote. Only visible (not 3+ flagged) reviews count."""
+    if not names:
+        return {}
+    rows = get_db().execute(
+        """SELECT r.*, u.name AS author FROM reviews r JOIN users u ON u.id = r.user_id
+           WHERE r.kind = ? ORDER BY r.created_at DESC, r.id DESC""", (kind,)).fetchall()
+    rows = visible_reviews(rows, user)
+    wanted = {_normalize_place_name(n) for n in names}
+    out = {}
+    for r in rows:
+        key = _normalize_place_name(r["place_name"] or "")
+        if key not in wanted:
+            continue
+        a = out.setdefault(key, {"total": 0, "n": 0, "tags": [], "quote": None})
+        try:
+            a["total"] += int(r["rating"] or 0)
+        except (TypeError, ValueError):
+            pass
+        a["n"] += 1
+        for t in (r["tags"] or "").split(","):
+            t = t.strip()
+            if t and t not in a["tags"] and len(a["tags"]) < 3:
+                a["tags"].append(t)
+        if a["quote"] is None and (r["notes"] or "").strip():
+            a["quote"] = ((r["notes"] or "").strip(), _author_name(r))
+    for a in out.values():
+        a["avg"] = a["total"] / a["n"] if a["n"] else None
+    return out
+
+
+def _fbo_results_html(kind, data, user, with_map=True):
+    """The pre-redesign results rendering, kept for FBOs only: the /fbos
+    list and the Home "FBOs in the area" card stay exactly as they were —
+    only the Hotels/Restaurants/Attractions search tabs are redesigned."""
     centre, results, error, radius, place = data
     kind_label = _kind_label(kind)
     if error and not results:
@@ -4081,11 +4153,119 @@ def external_results_html(kind, data, user, with_map=True):
           {action_html}</div>"""
     return header + map_toggle + map_html + search_html + '<div id="result_list">' + cards + '</div>'
 
+
+def external_results_html(kind, data, user, with_map=True):
+    if kind == "fbo":
+        # Only the three search tabs are redesigned — FBO rendering (the
+        # /fbos list and the Home "FBOs in the area" card) is unchanged.
+        return _fbo_results_html(kind, data, user, with_map)
+    centre, results, error, _radius, place = data
+    kind_label = _kind_label(kind)
+    if error and not results:
+        return f'<div class="error">{esc(error)}</div>'
+    if centre:
+        lat, lon, display = centre
+        header = f"<h2>{len(results)} {kind_label}s near {esc(display)}</h2>"
+    else:
+        header = f"<h2>{len(results)} {kind_label}s near you</h2>"
+    if not results:
+        return header + '<p class="muted">No places found near your current location.</p>'
+    markers = []
+    if centre:
+        markers.append({"lat": lat, "lon": lon, "name": "You are here", "you": True})
+    markers += [{"lat": r["lat"], "lon": r["lon"], "name": r["name"], "num": i + 1}
+                for i, r in enumerate(results)
+                if r.get("lat") is not None and r.get("lon") is not None]
+    map_html = (f'<div class="resultsmap" data-markers="{esc(json.dumps(markers))}"></div>'
+                if markers and with_map else "")
+    map_toggle = ""
+    if markers and with_map:
+        map_toggle = ('<div style="margin:4px 0"><button type="button" class="map-toggle" '
+                      'id="map_toggle" onclick="pccToggleMap()">Hide map</button></div>')
+    crew = _crew_for_places(kind, [r["name"] for r in results], user)
+    cards = ""
+    for i, r in enumerate(results):
+        num = i + 1
+        detail = ""
+        if kind == "hotel":
+            if r.get("brand") and r["brand"] != r["name"]:
+                detail = f"<div>{esc(r['brand'])}</div>"
+        elif kind == "restaurant":
+            if r.get("cuisine"):
+                detail += f"<div>{esc(r['cuisine'])}</div>"
+            if r.get("hours"):
+                detail += f"<div>{esc(r['hours'])}</div>"
+        elif kind == "fbo" and r.get("brand"):
+            detail = f"<div>{esc(r['brand'])}</div>"
+        elif r.get("atype"):
+            detail = f"<div>{esc(r['atype'])}</div>"
+        if r.get("lat") is not None and r.get("lon") is not None:
+            durl = _directions_url(r["lat"], r["lon"], r["name"])
+        else:
+            durl = _map_search_url(f"{r['name']}, {place['city']}")
+        if r.get("address"):
+            addr = (f'<div><a href="{esc(durl)}" target="_blank" '
+                    f'rel="noopener">{esc(r["address"])}</a></div>')
+        else:
+            addr = ""
+        phone = (f"<div><a href=\"tel:{esc(r['phone'])}\">{esc(r['phone'])}</a></div>"
+                 if r.get("phone") else "")
+        contact = f'<div class="rc-contact">{addr}{phone}</div>' if (addr or phone) else ""
+        rating_html = ""
+        if r.get("rating") is not None:
+            cnt = (f' <span class="rc-count">({r["review_count"]} reviews)</span>'
+                   if r.get("review_count") else "")
+            rating_html = f'<div class="rc-stars">★ {r["rating"]}{cnt}</div>'
+        photo_html = ""
+        if r.get("image"):
+            photo_html = (f'<img class="rc-photo" src="{esc(r["image"])}" alt="" loading="lazy">')
+        elif r.get("logo"):
+            photo_html = (f'<img class="rc-photo" src="{esc(r["logo"])}" alt="" loading="lazy">')
+        else:
+            initial = (r["name"] or "?").strip()[:1].upper() or "?"
+            photo_html = f'<div class="rc-photo rc-photo-ph">{esc(initial)}</div>'
+        # Crew score, tags and quote from pilot reviews of this place.
+        c = crew.get(_normalize_place_name(r["name"]))
+        crew_html = ""
+        tags_html = ""
+        quote_html = ""
+        if c and c["n"]:
+            crew_html = (f'<div class="rc-crew">Crew ★ {c["avg"]:.1f} '
+                         f'<span class="rc-count">({c["n"]} pilot review{"s" if c["n"] != 1 else ""})</span></div>')
+            if c["tags"]:
+                tags_html = ('<div>' + "".join(f'<span class="tag">{esc(t)}</span>' for t in c["tags"]) + '</div>')
+            if c["quote"]:
+                qtext, qauthor = c["quote"]
+                if len(qtext) > 140:
+                    qtext = qtext[:137].rstrip() + "…"
+                quote_html = (f'<div class="rc-quote">“{esc(qtext)}” '
+                              f'<span class="rc-quote-by">— {esc(qauthor)}</span></div>')
+        # Tapping a result name opens the place in the device's own map app
+        # (Apple Maps on Apple devices, Google Maps elsewhere) — at the exact
+        # coordinates when known, by name + city search when not.
+        name_html = (f'<a href="{esc(durl)}" target="_blank" rel="noopener">'
+                     f'<strong>{esc(r["name"])}</strong></a>')
+        add = (url_for("new_review") + "?" + urllib.parse.urlencode(
+            {"kind": kind, "place": r["name"], "airport": place["airport_code"], "city": place["city"],
+             "phone": r["phone"] or "", "address": r["address"] or "",
+             "lat": r.get("lat") or "", "lon": r.get("lon") or ""}))
+        acts = []
+        if r.get("phone"):
+            acts.append(f'<a href="tel:{esc(r["phone"])}">Call</a>')
+        acts.append(f'<a href="{esc(durl)}" target="_blank" rel="noopener">Directions</a>')
+        acts.append(f'<a href="{add}">Add review</a>')
+        action_html = (f'<div class="rc-actions">{_attach_button(kind, place, r["name"])}'
+                       f'<p class="rc-links">{" · ".join(acts)}</p></div>')
+        cards += f"""<div class="card result-card" data-name="{esc(r['name'].lower())}"><div class="rc-top">{photo_html}<div class="rc-body"><span class="rc-num">{num}</span>{name_html} <span class="dist-badge dist-badge-big">{r['distance']} mi from you</span>
+          {rating_html}{crew_html}{tags_html}{quote_html}{detail}{contact}</div></div>
+          {action_html}</div>"""
+    return header + map_toggle + map_html + '<div id="result_list">' + cards + '</div>'
+
 @app.route("/attractions", methods=["GET", "POST"])
 @login_required
 def attractions():
     user = current_user()
-    card, data, _ = at_location_section("attraction", user, [5, 10, 20], 10)
+    card, data, _ = at_location_section("attraction", user)
     ext = external_results_html("attraction", data, user) if data else ""
     body = card + ext
     return page("Attractions", user, body)
@@ -4155,7 +4335,7 @@ def hotels():
     scope = request.args.get("scope", "in")
     sort = request.args.get("sort", "new")
     tag = request.args.get("tag", "")
-    card, data, _ = at_location_section("hotel", user, [2, 5, 10, 20], 2)
+    card, data, _ = at_location_section("hotel", user)
     ext = external_results_html("hotel", data, user) if data else ""
     body = card + ext + saved_reviews_section("hotel", user, q, scope, sort, tag)
     return page("Hotels", user, body)
@@ -4168,7 +4348,7 @@ def restaurants():
     scope = request.args.get("scope", "in")
     sort = request.args.get("sort", "new")
     tag = request.args.get("tag", "")
-    card, data, _ = at_location_section("restaurant", user, [2, 5, 10, 20], 2)
+    card, data, _ = at_location_section("restaurant", user)
     ext = external_results_html("restaurant", data, user) if data else ""
     body = card + ext + saved_reviews_section("restaurant", user, q, scope, sort, tag)
     return page("Restaurants", user, body)
