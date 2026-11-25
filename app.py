@@ -5128,12 +5128,50 @@ def friends():
                  f'if(none)none.style.display=(q&&n===0)?"":"none";'
                  f'if(count)count.textContent=q?(n+(n===1?" match":" matches")):"";}}'
                  f'input.addEventListener("input",filter);filter();}})();</script>')
+    invite_text = ("Join me on BtwnFlghts — where pilots and crew share real layover intel: "
+                   "crew-rated hotels, restaurants and FBOs, and who's in the area.")
+    invite_url = "https://btwnflghts.com"
+    invite_msg = urllib.parse.quote(f"{invite_text} {invite_url}", safe="")
+    invite_subject = urllib.parse.quote("Join me on BtwnFlghts", safe="")
+    invite_card = (
+        '<div class="card mini"><h2>Invite a crew member</h2>'
+        '<p class="muted">Know a pilot or crew member who\'d use this? Send them an invite.</p>'
+        '<button type="button" id="invite_share_btn">Share invite</button>'
+        '<div id="invite_links" style="display:none;margin-top:12px">'
+        '<div style="display:flex;flex-wrap:wrap;gap:8px">'
+        f'<a class="p-btn" href="sms:?&body={invite_msg}">Text message</a>'
+        f'<a class="p-btn" href="https://wa.me/?text={invite_msg}">WhatsApp</a>'
+        f'<a class="p-btn" href="mailto:?subject={invite_subject}&body={invite_msg}">Email</a>'
+        '<button type="button" class="p-btn" id="invite_copy_btn">Copy link</button>'
+        '</div>'
+        '<p class="muted" id="invite_copied" style="display:none;margin:10px 0 0">Link copied</p>'
+        '</div>'
+        '<script>(function(){'
+        'var btn=document.getElementById("invite_share_btn"),'
+        'links=document.getElementById("invite_links"),'
+        'data={title:"BtwnFlghts",text:' + json.dumps(invite_text) + ',url:"' + invite_url + '"};'
+        'btn.addEventListener("click",function(){'
+        'if(navigator.share){navigator.share(data).catch(function(){});}'
+        'else{links.style.display=links.style.display==="none"?"":"none";}});'
+        'var copy=document.getElementById("invite_copy_btn"),'
+        'done=document.getElementById("invite_copied");'
+        'copy.addEventListener("click",function(){'
+        'function ok(){done.style.display="";'
+        'setTimeout(function(){done.style.display="none";},2500);}'
+        'if(navigator.clipboard&&navigator.clipboard.writeText){'
+        'navigator.clipboard.writeText(data.url).then(ok,ok);}'
+        'else{var ta=document.createElement("textarea");ta.value=data.url;'
+        'document.body.appendChild(ta);ta.select();'
+        'try{document.execCommand("copy");}catch(e){}'
+        'document.body.removeChild(ta);ok();}});'
+        '})();</script>'
+        '</div>')
     body = f"""<div class="card mini"><h2>Friends</h2>
       <p class="muted">Friends show as nearby only when their check-in matches yours.</p>
       {search_html}
       <ul id="friend_list" class="person-list">{list_html}{no_match}</ul></div>
       {req_card}
-      {add_card}{filter_js}"""
+      {add_card}{invite_card}{filter_js}"""
     return page("Friends", user, body, flash=flash, error=error)
 
 # ---------------------------------------------------------------- messages
