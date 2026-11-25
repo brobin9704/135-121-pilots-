@@ -1390,6 +1390,9 @@ input:disabled{opacity:.55}
 .mc-meta.mine{justify-content:flex-end}
 .mc-meta.theirs{margin-left:40px}
 .mc-read{color:#4fc3ff;font-weight:700}
+.mc-sending{color:#a9cdec}
+.mc-failed{color:#f87171;font-weight:700;cursor:pointer}
+.mc-row.failed .mc-bubble{opacity:.7}
 .mc-greet{text-align:center;padding:48px 20px}
 .mc-greet h3{margin:14px 0 6px}
 .mc-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px}
@@ -1419,7 +1422,7 @@ html.hide-resultsmap .resultsmap{display:none}
 .home-stack{display:flex;flex-direction:column;gap:20px;min-width:0}
 .home-stack .card{margin:0}
 @media(max-width:1020px){.home-grid{grid-template-columns:1fr 1fr}.home-stack{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}.qa-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:680px){.hero{padding:20px 16px}.hero h1{font-size:24px}.brand-logo img{height:32px}.topbar-logout{padding:6px 7px;font-size:12px;margin-left:0}.avatar-link img,.avatar-link .avatar-initial{width:32px;height:32px;font-size:15px}.hero-avatar img{max-width:64px;max-height:64px}.topbar{gap:6px;padding:10px 2px}.topbar-right{gap:2px}.topbar-div{display:none}.icon-btn{min-width:36px;padding:6px}.topnav a{padding:10px 8px;font-size:14px}.loc-actions{flex-direction:column}#locmap{height:240px!important}.rc-photo{flex:0 0 80px;width:80px;height:80px}.rc-top{gap:10px}}
+@media(max-width:680px){.hero{padding:20px 16px}.hero h1{font-size:24px}.brand-logo img{height:32px}.topbar-logout{padding:6px 7px;font-size:12px;margin-left:0}.avatar-link img,.avatar-link .avatar-initial{width:32px;height:32px;font-size:15px}.hero-avatar img{max-width:64px;max-height:64px}.topbar{gap:6px;padding:10px 2px}.topbar-right{gap:2px}.topbar-div{display:none}.icon-btn{min-width:36px;padding:6px}.topnav a{padding:9px 6px;font-size:11px;white-space:nowrap;min-height:36px}.loc-actions{flex-direction:column}#locmap{height:240px!important}.rc-photo{flex:0 0 80px;width:80px;height:80px}.rc-top{gap:10px}}
 .loc-card{background:rgba(8,42,78,.82);border:1px solid rgba(140,200,255,.22)}
 .loc-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .loc-head>*{min-width:0}
@@ -1440,7 +1443,7 @@ html.hide-resultsmap .resultsmap{display:none}
 .reviews-grid .card{margin:0}
 @media(max-width:1020px){.reviews-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:480px){.home-grid{grid-template-columns:1fr}.home-stack{grid-template-columns:1fr}.reviews-grid{grid-template-columns:1fr}.thumbs img{width:80px;height:80px}}
-@media(max-width:380px){.wrap{padding:10px}.topbar{padding:8px 2px;gap:6px}.brand-logo img{height:28px}.topbar-logout{padding:6px 8px;font-size:12px}.topnav a{padding:12px 12px;font-size:13px}.topbar-div{display:none}.icon-btn{min-width:40px;min-height:40px;padding:6px}.avatar-link img,.avatar-link .avatar-initial{width:28px;height:28px;font-size:13px}.hero-avatar img{max-width:56px;max-height:56px}.loc-head h2{font-size:20px}.loc-place{font-size:22px}.active-pill{font-size:12px;padding:3px 10px}#locmap{height:220px!important}}
+@media(max-width:380px){.wrap{padding:10px}.topbar{padding:8px 2px;gap:4px}.brand-logo img{height:26px}.topbar-logout{padding:6px 8px;font-size:12px}.topnav a{padding:9px 6px;font-size:11px}.topbar-div{display:none}.icon-btn{min-width:36px;min-height:40px;padding:6px}.avatar-link img,.avatar-link .avatar-initial{width:28px;height:28px;font-size:13px}.hero-avatar img{max-width:56px;max-height:56px}.loc-head h2{font-size:20px}.loc-place{font-size:22px}.active-pill{font-size:12px;padding:3px 10px}#locmap{height:220px!important}}
 /* Landscape orientation: sideways screens are wide but short, so compact vertically */
 @media (orientation:landscape) and (max-height:500px){.topbar{padding:6px 4px;gap:8px}.topbar-right{gap:4px}.brand-logo img{height:32px}.avatar-link img,.avatar-link .avatar-initial{width:32px;height:32px;font-size:15px}.topnav a{padding:12px 16px;font-size:14px}.hero{padding:14px 16px;margin:10px 0 14px;gap:14px}.hero h1{font-size:22px}.hero-sub{font-size:14px;margin-top:4px}.hero-avatar img{width:56px;height:56px}.home-grid{grid-template-columns:1fr 1fr}.home-stack{grid-template-columns:1fr 1fr}.reviews-grid{grid-template-columns:repeat(2,1fr)}.card{padding:12px;margin:10px 0}.home-grid,.home-stack,.reviews-grid{gap:14px}.wrap{padding:10px 16px}.minimap{height:140px}.resultsmap{height:180px}#locmap{height:180px!important}.qa-tile{min-height:72px}}
 @media (orientation:landscape) and (max-height:400px){.hero{padding:10px 14px;margin:8px 0 10px;gap:12px}.hero h1{font-size:20px}.hero-avatar img{width:48px;height:48px}.card{padding:10px}.minimap{height:120px}.resultsmap{height:160px}#locmap{height:160px!important}.topbar{padding:4px}}
@@ -1524,6 +1527,7 @@ html.light .mc-ava-ph{background:#e0f2fe}
 html.light .mc-day span{background:#e2e8f0;color:#475569}
 html.light .mc-bubble.theirs{background:#e9eff6;color:#12293f}
 html.light .mc-read{color:#0284c7}
+html.light .mc-failed{color:#dc2626}
 html.light .mc-composer{border-top-color:#e2e8f0}
 html.light .mc-composer textarea{background:#fff;color:#0c2531;border-color:#cbd5e1}
 html.light .mc-count.warn{color:#d97706}
@@ -2381,7 +2385,7 @@ def register():
             return page("Register", None, register_form(), error="Name, email, and password are required.")
         db = get_db()
         role = request.form.get("role", "pilot")
-        if role not in ("pilot", "crew"):
+        if role not in ("pilot", "crew", "other"):
             role = "pilot"
         params = (name, request.form.get("airline", "").strip(), request.form.get("base", "").strip(),
                   request.form.get("aircraft", "").strip(), email, generate_password_hash(password), role)
@@ -2407,7 +2411,7 @@ def register():
 def register_form():
     return """<div class="card"><h2>Create an account</h2><p class="muted">Open to all pilots and crew.</p>
     <form method="post"><label>Name</label><input name="name" required>
-    <label>Role</label><select name="role"><option value="pilot">Pilot</option><option value="crew">Crew</option></select>
+    <label>Role</label><select name="role"><option value="pilot">Pilot</option><option value="crew">Crew</option><option value="other">Other</option></select>
     <label>Airline</label><input name="airline"><label>Base</label><input name="base">
     <label>Aircraft</label><input name="aircraft"><label>Email</label><input type="email" name="email" required>
     <label>Password</label><input type="password" name="password" required>
@@ -2469,7 +2473,7 @@ PRIVACY_BODY = """<h1>Privacy Policy</h1>
 <div class="card info-card">
 <h2>What BtwnFlghts collects</h2>
 <ul>
-<li><strong>Your account:</strong> your name, email address, your password (stored hashed, never in plain text), your Pilot or Crew role, and your airline, base, and aircraft type.</li>
+<li><strong>Your account:</strong> your name, email address, your password (stored hashed, never in plain text), your Pilot, Crew or Other role, and your airline, base, and aircraft type.</li>
 <li><strong>Your profile photo</strong>, if you add one. It&rsquo;s optional.</li>
 <li><strong>Your check-ins:</strong> the airport code, city, and state, the dates, and any hotel, restaurant, or attraction you attach to your stay.</li>
 <li><strong>Your reviews:</strong> the text, star rating, optional safety rating, tags, and photos. If you add a place&rsquo;s phone number or address to a review, that is stored too.</li>
@@ -2967,7 +2971,7 @@ def profile():
         if clash:
             return page("My Profile", user, profile_form(user), error="That email is already used by another account.")
         role = request.form.get("role", "pilot")
-        if role not in ("pilot", "crew"):
+        if role not in ("pilot", "crew", "other"):
             role = "pilot"
         db.execute("UPDATE users SET name=?, airline=?, base=?, aircraft=?, email=?, role=? WHERE id=?",
                    (name, request.form.get("airline", "").strip(), request.form.get("base", "").strip(),
@@ -3264,10 +3268,10 @@ def admin_remove_photo(user_id):
 def _role_options(selected):
     return "".join(
         f'<option value="{v}"{" selected" if v == selected else ""}>{v.title()}</option>'
-        for v in ("pilot", "crew"))
+        for v in ("pilot", "crew", "other"))
 
 def profile_form(user):
-    role = user["role"] if user["role"] in ("pilot", "crew") else "pilot"
+    role = user["role"] if user["role"] in ("pilot", "crew", "other") else "pilot"
     try:
         _has_photo = bool(user["profile_photo"])
     except (KeyError, IndexError):
@@ -5327,12 +5331,13 @@ def push_unsubscribe():
     return jsonify({"ok": True})
 
 
-def _notify_message(sender, to_id, body):
+def _notify_message(sender, to_id, body, thread_url=None):
     """Email the recipient about a new message (silent no-op if email is off)."""
     to_user = get_db().execute("SELECT email, name FROM users WHERE id=?", (to_id,)).fetchone()
     if not to_user:
         return
-    thread_url = request.host_url.rstrip("/") + url_for("conversation", user_id=sender["id"])
+    if thread_url is None:
+        thread_url = request.host_url.rstrip("/") + url_for("conversation", user_id=sender["id"])
     send_email(to_user["email"],
                f"New message from {sender['name']} on BtwnFlghts",
                f"Hi {to_user['name']},\n\n{sender['name']} sent you a message "
@@ -5341,6 +5346,19 @@ def _notify_message(sender, to_id, body):
     # The push itself carries no content: the message is only visible after login.
     _send_push(to_id, "BtwnFlghts", "You have a new message. Log in to read it.",
                f"/messages/{sender['id']}")
+
+
+def _notify_message_bg(sender, to_id, body, thread_url):
+    """Run _notify_message off the request path (the SMTP send + push can
+    take seconds; an AJAX send must not wait on them). Own app context,
+    because the worker thread has no request/app context of its own."""
+    def _run():
+        with app.app_context():
+            try:
+                _notify_message(sender, to_id, body, thread_url=thread_url)
+            except Exception:
+                pass
+    threading.Thread(target=_run, daemon=True).start()
 
 
 @app.route("/messages", methods=["GET", "POST"])
@@ -5407,7 +5425,10 @@ window.addEventListener("load",mcBottom);
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(mcBottom);
 setTimeout(mcBottom,350);
 var ta=document.getElementById("mc_input"),send=document.getElementById("mc_send"),count=document.getElementById("mc_count"),form=document.getElementById("mc_form");
-if(!ta)return;
+if(!ta||!m)return;
+var otherId=m.getAttribute("data-other");
+var lastId=parseInt(m.getAttribute("data-last-id")||"0",10)||0;
+var tmpSeq=0;
 function upd(){
 ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight,120)+"px";
 var n=ta.value.length;
@@ -5417,8 +5438,135 @@ count.classList.toggle("warn",n>1850&&n<=2000);
 count.classList.toggle("over",n>2000);
 }
 ta.addEventListener("input",upd);
-if(form){form.addEventListener("submit",function(){if(window.pccSendBlip)window.pccSendBlip();});}
-ta.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!send.disabled){if(form.requestSubmit){form.requestSubmit();}else{if(window.pccSendBlip)window.pccSendBlip();form.submit();}}}});
+function clockNow(){var d=new Date(),h=d.getHours(),ap=h>=12?"PM":"AM";h=h%12||12;var mi=d.getMinutes();return h+":"+(mi<10?"0":"")+mi+" "+ap;}
+function nearBottom(){return m.scrollHeight-m.scrollTop-m.clientHeight<90;}
+function daySep(label){
+var days=m.querySelectorAll(".mc-day span"),last=days.length?days[days.length-1].textContent:null;
+if(last!==label){var dv=document.createElement("div");dv.className="mc-day";var sp=document.createElement("span");sp.textContent=label;dv.appendChild(sp);m.appendChild(dv);}
+}
+function stripReceipt(){
+var metas=m.querySelectorAll(".mc-meta.mine"),lm=metas.length?metas[metas.length-1]:null;
+if(lm){var r=lm.querySelector(".mc-read,.mc-sent,.mc-sending,.mc-failed");if(r)r.remove();}
+}
+function metaFor(mid){return m.querySelector('.mc-meta[data-mid="'+mid+'"]');}
+function setState(row,state,clock){
+var mt=metaFor(row.getAttribute("data-mid"));if(!mt)return;
+var old=mt.querySelector(".mc-read,.mc-sent,.mc-sending,.mc-failed");if(old)old.remove();
+row.classList.toggle("failed",state==="failed");
+if(clock){var ck=mt.querySelector(".mc-clock");if(ck)ck.textContent=clock;}
+if(state==="none")return;
+var s=document.createElement("span");
+if(state==="sending"){s.className="mc-sending";s.textContent="Sending\\u2026";}
+else if(state==="sent"){s.className="mc-sent";s.textContent="Sent";}
+else if(state==="read"){s.className="mc-read";s.textContent="\\u2713\\u2713 Read";}
+else if(state==="failed"){s.className="mc-failed";s.textContent="Failed \\u00b7 Tap to retry";}
+mt.appendChild(s);
+}
+function makeRow(mid,mine,body,ava){
+var row=document.createElement("div");
+row.className="mc-row"+(mine?" mine":"")+" tail";
+row.setAttribute("data-mid",mid);
+if(!mine){var tv=document.createElement("span");tv.className="mc-tava";tv.innerHTML=ava||"";row.appendChild(tv);}
+var bub=document.createElement("div");bub.className="mc-bubble "+(mine?"mine":"theirs");bub.textContent=body;row.appendChild(bub);
+return row;
+}
+function makeMeta(mid,mine,clock){
+var mt=document.createElement("div");
+mt.className="mc-meta"+(mine?" mine":" theirs");
+mt.setAttribute("data-mid",mid);
+var ck=document.createElement("span");ck.className="mc-clock";ck.textContent=clock;mt.appendChild(ck);
+return mt;
+}
+function confirmRow(row,id,clock){
+var old=row.getAttribute("data-mid");
+row.setAttribute("data-mid",id);
+var mt=metaFor(old);if(mt)mt.setAttribute("data-mid",id);
+if(id>lastId)lastId=id;
+setState(row,"sent",clock);
+}
+function postMessage(row,text){
+var fd=new FormData();fd.append("body",text);
+fetch(window.location.pathname,{method:"POST",headers:{"X-PCC-Ajax":"1"},body:fd})
+.then(function(r){return r.json().then(function(d){return {ok:r.ok&&!!d.ok,d:d};});})
+.then(function(res){if(!res.ok)throw new Error("send failed");confirmRow(row,res.d.id,res.d.clock);})
+.catch(function(){if(row.getAttribute("data-mid").indexOf("tmp")===0)setState(row,"failed");});
+}
+function doSend(){
+var text=ta.value.trim();
+if(!text||ta.value.length>2000)return;
+if(window.pccSendBlip)window.pccSendBlip();
+var greet=m.querySelector(".mc-greet");if(greet)greet.remove();
+daySep("Today");
+stripReceipt();
+tmpSeq+=1;var tmp="tmp"+tmpSeq;
+var row=makeRow(tmp,true,text);
+var mt=makeMeta(tmp,true,clockNow());
+m.appendChild(row);m.appendChild(mt);
+setState(row,"sending");
+mcBottom();
+ta.value="";upd();ta.focus();
+postMessage(row,text);
+}
+if(form){form.addEventListener("submit",function(e){e.preventDefault();doSend();});}
+ta.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!send.disabled){if(form&&form.requestSubmit){form.requestSubmit();}else{doSend();}}}});
+function appendFromServer(msg){
+var greet=m.querySelector(".mc-greet");if(greet)greet.remove();
+daySep(msg.day);
+var rows=m.querySelectorAll(".mc-row"),lastRow=rows.length?rows[rows.length-1]:null;
+var sameRun=!!lastRow&&lastRow.classList.contains("mine")===msg.mine;
+if(sameRun){
+var meta=metaFor(lastRow.getAttribute("data-mid"));
+lastRow.classList.remove("tail");
+if(!msg.mine){var av=lastRow.querySelector(".mc-tava");if(av){var gh=document.createElement("span");gh.className="mc-ghost";av.parentNode.replaceChild(gh,av);}}
+var row=makeRow(msg.id,msg.mine,msg.body,msg.ava);
+if(meta){meta.setAttribute("data-mid",msg.id);m.insertBefore(row,meta);}
+else{m.appendChild(row);m.appendChild(makeMeta(msg.id,msg.mine,msg.clock));}
+if(msg.mine)setState(row,msg.read?"read":"sent",msg.clock);
+else{var ck=meta?meta.querySelector(".mc-clock"):null;if(ck)ck.textContent=msg.clock;}
+return;
+}
+if(msg.mine)stripReceipt();
+var row2=makeRow(msg.id,msg.mine,msg.body,msg.ava);
+m.appendChild(row2);m.appendChild(makeMeta(msg.id,msg.mine,msg.clock));
+if(msg.mine)setState(row2,msg.read?"read":"sent",msg.clock);
+}
+function merge(d){
+if(!d)return;
+var wasBottom=nearBottom(),changed=false;
+(d.messages||[]).forEach(function(msg){
+if(m.querySelector('.mc-row[data-mid="'+msg.id+'"]')){if(msg.id>lastId)lastId=msg.id;return;}
+if(msg.mine){
+var trows=m.querySelectorAll('.mc-row.mine[data-mid^="tmp"]'),adopted=false;
+for(var i=0;i<trows.length;i++){var b=trows[i].querySelector(".mc-bubble");if(b&&b.textContent===msg.body){confirmRow(trows[i],msg.id,msg.clock);adopted=true;break;}}
+if(adopted){changed=true;return;}
+}
+appendFromServer(msg);changed=true;
+if(msg.id>lastId)lastId=msg.id;
+});
+if(d.own_last_read){
+var metas=m.querySelectorAll(".mc-meta.mine"),lm=metas.length?metas[metas.length-1]:null;
+if(lm&&lm.getAttribute("data-mid").indexOf("tmp")!==0){var row=m.querySelector('.mc-row[data-mid="'+lm.getAttribute("data-mid")+'"]');if(row)setState(row,"read");}
+}
+if(changed&&wasBottom)mcBottom();
+}
+function pollOnce(cb){
+fetch("/api/messages/"+otherId+"/updates?after="+lastId)
+.then(function(r){return r.json();})
+.then(function(d){merge(d);if(cb)cb();})
+.catch(function(){if(cb)cb();});
+}
+setInterval(function(){if(document.visibilityState==="visible")pollOnce();},4000);
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")pollOnce();});
+m.addEventListener("click",function(e){
+var f=e.target&&e.target.closest?e.target.closest(".mc-failed"):null;
+if(!f)return;
+var mt=f.closest(".mc-meta");if(!mt)return;
+var row=m.querySelector('.mc-row[data-mid="'+mt.getAttribute("data-mid")+'"]');
+if(!row)return;
+var text=row.querySelector(".mc-bubble").textContent;
+setState(row,"sending");
+pollOnce(function(){if(row.getAttribute("data-mid").indexOf("tmp")===0)postMessage(row,text);});
+});
 upd();
 })();</script>"""
 
@@ -5641,14 +5789,15 @@ def _thread_pane_html(user, db, other):
                 cls = " mine" if mine else ""
                 tcls = " tail" if tail else ""
                 bcls = "mine" if mine else "theirs"
-                parts.append(f'<div class="mc-row{cls}{tcls}">{ava}'
+                parts.append(f'<div class="mc-row{cls}{tcls}" data-mid="{r["id"]}">{ava}'
                              f'<div class="mc-bubble {bcls}">{esc(r["body"])}</div></div>')
             receipt = ""
             if run_idx == target_idx:
                 receipt = (' <span class="mc-read">✓✓ Read</span>' if run_rows[-1][0]["is_read"]
                            else ' <span class="mc-sent">Sent</span>')
             mcls = " mine" if mine else " theirs"
-            parts.append(f'<div class="mc-meta{mcls}">{esc(_msg_clock(run_rows[-1][1]))}{receipt}</div>')
+            parts.append(f'<div class="mc-meta{mcls}" data-mid="{run_rows[-1][0]["id"]}">'
+                         f'<span class="mc-clock">{esc(_msg_clock(run_rows[-1][1]))}</span>{receipt}</div>')
         msgs = "".join(parts)
     composer = (f'<form method="post" class="mc-composer" id="mc_form">'
                 f'<div class="mc-composer-inner">'
@@ -5657,8 +5806,9 @@ def _thread_pane_html(user, db, other):
                 f'<button type="submit" class="mc-send" id="mc_send" aria-label="Send" disabled>{_MC_SVG_PLANE}</button></div>'
                 f'<div class="mc-composer-foot"><span>Enter to send · Shift + Enter for a new line</span>'
                 f'<span class="mc-count" id="mc_count"></span></div></form>')
+    last_id = rows[-1]["id"] if rows else 0
     return (f'<div class="mc-thread">{head}'
-            f'<div class="mc-msgs" id="mc_msgs">{msgs}</div>{composer}</div>{MC_THREAD_JS}')
+            f'<div class="mc-msgs" id="mc_msgs" data-other="{oid}" data-last-id="{last_id}">{msgs}</div>{composer}</div>{MC_THREAD_JS}')
 
 
 @app.route("/messages/<int:user_id>", methods=["GET", "POST"])
@@ -5673,10 +5823,29 @@ def conversation(user_id):
     if request.method == "POST":
         body = (request.form.get("body") or "").strip()
         if body:
-            db.execute("INSERT INTO messages (sender_id, recipient_id, body) VALUES (?,?,?)",
-                       (user["id"], other["id"], body[:2000]))
+            if USE_POSTGRES:
+                cur = db.execute("INSERT INTO messages (sender_id, recipient_id, body) VALUES (?,?,?) RETURNING id",
+                                 (user["id"], other["id"], body[:2000]))
+                new_msg_id = cur.fetchone()["id"]
+            else:
+                cur = db.execute("INSERT INTO messages (sender_id, recipient_id, body) VALUES (?,?,?)",
+                                 (user["id"], other["id"], body[:2000]))
+                new_msg_id = cur.lastrowid
             db.commit()
+            if request.headers.get("X-PCC-Ajax") == "1":
+                # In-page send: answer as soon as the message is stored and
+                # let the email/push fan-out run in the background, so the
+                # composer never waits on SMTP or the push service.
+                row = db.execute("SELECT created_at FROM messages WHERE id = ?",
+                                 (new_msg_id,)).fetchone()
+                dt = _msg_dt(row["created_at"]) if row else None
+                _notify_message_bg({"id": user["id"], "name": user["name"]}, other["id"], body,
+                                   request.host_url.rstrip("/") + url_for("conversation", user_id=user["id"]))
+                return jsonify({"ok": True, "id": new_msg_id,
+                                "clock": _msg_clock(dt), "day": _msg_day_label(dt)})
             _notify_message(user, other["id"], body)
+        if request.headers.get("X-PCC-Ajax") == "1":
+            return jsonify({"ok": False}), 400
         return redirect(url_for("conversation", user_id=other["id"]))
     db.execute("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND recipient_id = ? AND is_read = 0",
                (other["id"], user["id"]))
@@ -5685,6 +5854,41 @@ def conversation(user_id):
              f'{_inbox_pane_html(user, db, active_id=other["id"])}'
              f'{_thread_pane_html(user, db, other)}</div>')
     return page("Messages", user, shell)
+
+
+@app.route("/api/messages/<int:user_id>/updates")
+@login_required
+def conversation_updates(user_id):
+    """JSON feed for an open thread: messages after ?after=<id>, oldest
+    first. Fetching it counts as viewing the thread, so the other side's
+    messages are marked read — the same thing a page load does today."""
+    user = current_user()
+    db = get_db()
+    other = db.execute("SELECT id, name FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not other or other["id"] == user["id"]:
+        return jsonify({"messages": [], "own_last_read": False})
+    after = request.args.get("after", 0, type=int) or 0
+    rows = db.execute(
+        "SELECT * FROM messages WHERE id > ? AND ((sender_id = ? AND recipient_id = ?) "
+        "OR (sender_id = ? AND recipient_id = ?)) ORDER BY id ASC",
+        (after, user["id"], other["id"], other["id"], user["id"])).fetchall()
+    db.execute("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND recipient_id = ? AND is_read = 0",
+               (other["id"], user["id"]))
+    db.commit()
+    out = []
+    for r in rows:
+        dt = _msg_dt(r["created_at"])
+        item = {"id": r["id"], "mine": r["sender_id"] == user["id"], "body": r["body"],
+                "clock": _msg_clock(dt), "day": _msg_day_label(dt),
+                "read": bool(r["is_read"])}
+        if not item["mine"]:
+            item["ava"] = _avatar_html(other["id"], 28)
+        out.append(item)
+    last_own = db.execute(
+        "SELECT is_read FROM messages WHERE sender_id = ? AND recipient_id = ? "
+        "ORDER BY id DESC LIMIT 1", (user["id"], other["id"])).fetchone()
+    return jsonify({"messages": out,
+                    "own_last_read": bool(last_own and last_own["is_read"])})
 
 # ---------------------------------------------------------------- PWA
 PWA_ICON_SVG = (
