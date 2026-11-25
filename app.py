@@ -1838,6 +1838,20 @@ TZ_JS = ("<script>(function(){try{var z=Intl.DateTimeFormat().resolvedOptions().
          "try{if(!sessionStorage.getItem('tzr')){sessionStorage.setItem('tzr','1');location.reload();}}catch(e){}"
          "}catch(e){}})();</script>")
 
+OG_HEAD = ('<meta name="description" content="Crew-rated hotels, restaurants, attractions and FBOs near the airport, reviewed by pilots — plus see which friends are in the area. Free, for pilots and crew.">'
+           '<meta property="og:type" content="website">'
+           '<meta property="og:site_name" content="BtwnFlghts">'
+           '<meta property="og:title" content="BtwnFlghts — Where pilots share real layover intel">'
+           '<meta property="og:description" content="Crew-rated hotels, restaurants, attractions and FBOs near the airport, reviewed by pilots — plus see which friends are in the area. Free, for pilots and crew.">'
+           '<meta property="og:url" content="https://btwnflghts.com/">'
+           '<meta property="og:image" content="https://btwnflghts.com/static/og-image.jpg">'
+           '<meta property="og:image:width" content="1200">'
+           '<meta property="og:image:height" content="630">'
+           '<meta name="twitter:card" content="summary_large_image">'
+           '<meta name="twitter:title" content="BtwnFlghts — Where pilots share real layover intel">'
+           '<meta name="twitter:description" content="Crew-rated hotels, restaurants, attractions and FBOs near the airport, reviewed by pilots — plus see which friends are in the area. Free, for pilots and crew.">'
+           '<meta name="twitter:image" content="https://btwnflghts.com/static/og-image.jpg">')
+
 
 def page(title, user, body, flash=None, error=None):
     msg = f'<div class="flash">{flash}</div>' if flash else ""
@@ -1872,6 +1886,7 @@ def page(title, user, body, flash=None, error=None):
                   '<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">')
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+      {OG_HEAD}
       {pwa_head}
       {fonts_head}
       <title>{{{{ title }}}} - BtwnFlghts</title><style>{CSS}</style>
@@ -2855,6 +2870,7 @@ def login_page(error=None):
     err = f'<div class="error">{error}</div>' if error else ""
     return render_template_string(f"""<!doctype html><html lang="en"><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+      {OG_HEAD}
       <title>Log in - BtwnFlghts</title><style>
       body{{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e2e8f0;
         min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}}
