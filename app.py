@@ -1408,7 +1408,8 @@ input:disabled{opacity:.55}
 .mc-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px}
 .mc-composer{border-top:1px solid rgba(120,190,255,.16);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
 .mc-composer-inner{display:flex;align-items:flex-end;gap:10px;max-width:860px;margin:0 auto}
-.mc-composer textarea{flex:1;width:100%;margin:0;padding:11px 16px;border-radius:22px;border:1px solid rgba(120,190,255,.3);background:rgba(6,34,64,.82);color:#f2f8ff;font-size:15.5px;line-height:1.4;min-height:44px;max-height:120px;resize:none;box-sizing:border-box;font-family:inherit}
+.mc-composer textarea{flex:1;width:100%;margin:0;padding:11px 16px;border-radius:22px;border:1px solid rgba(120,190,255,.3);background:rgba(6,34,64,.82);color:#f2f8ff;font-size:15.5px;line-height:1.4;min-height:44px;max-height:120px;resize:none;box-sizing:border-box;font-family:inherit;scrollbar-width:none}
+.mc-composer textarea::-webkit-scrollbar{display:none;width:0;height:0}
 .mc-send{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:0;background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 100%);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 16px rgba(0,134,232,.35);padding:0}
 .mc-send:disabled{opacity:.35;box-shadow:none;cursor:default}
 .mc-send svg{width:20px;height:20px;fill:#fff;margin-left:2px}
