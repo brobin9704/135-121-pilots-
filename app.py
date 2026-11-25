@@ -1416,6 +1416,16 @@ input:disabled{opacity:.55}
 .mc-count.warn{color:#fbbf24}
 .mc-count.over{color:#f87171}
 @media(max-width:820px){.mc-shell{grid-template-columns:1fr;height:calc(100dvh - 118px);min-height:460px;border-radius:20px}.mc-inbox{border-right:0}.mc-thread{display:none}.mc-shell.mc-showthread .mc-thread{display:flex}.mc-shell.mc-showthread .mc-inbox{display:none}.mc-back{display:inline-flex}.mc-bubble{max-width:80%}}
+/* Chat screen (an open conversation): the page itself stays put — the
+   top bar, thread header and composer are fixed and only the message
+   list scrolls. The wrap becomes a full-viewport flex column and the
+   shell grows to fill it, replacing its fixed card height. */
+html.chat-lock,body.chat-lock{overflow:hidden;overscroll-behavior:none}
+.wrap-chat{height:100vh;height:100dvh;box-sizing:border-box;display:flex;flex-direction:column}
+.wrap-chat .topbar{flex:0 0 auto}
+.wrap-chat .mc-shell{flex:1 1 auto;height:auto;min-height:0;margin:10px 0 12px}
+.wrap-chat .page-foot{display:none}
+.mc-msgs{overscroll-behavior:contain}
 .map-toggle{background:none;border:1px solid rgba(140,200,255,.4);color:#f2f8ff;border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer;min-height:44px}
 html.hide-resultsmap .resultsmap{display:none}
 .hero{position:relative;border-radius:20px;overflow:hidden;padding:26px 24px;margin:14px 0 20px;background:rgba(8,42,78,.82);border:1px solid rgba(140,200,255,.22);display:flex;gap:18px;align-items:center}
@@ -1867,12 +1877,14 @@ OG_HEAD = ('<meta name="description" content="Crew-rated hotels, restaurants, at
            '<meta name="twitter:image" content="https://btwnflghts.com/static/og-image.jpg">')
 
 
-def page(title, user, body, flash=None, error=None):
+def page(title, user, body, flash=None, error=None, chat=False):
     msg = f'<div class="flash">{flash}</div>' if flash else ""
     err = f'<div class="error">{error}</div>' if error else ""
     chrome, after, wrap_cls = "", "", "wrap"
     if user:
         wrap_cls = "wrap wrap-wide" if title in ("Home", "Messages") else "wrap"
+        if chat:
+            wrap_cls += " wrap-chat"
         sound_btn = ('<button id="sound_toggle" class="icon-btn" onclick="pccToggleSound(this)" title="Check-in and message sounds">🔔</button>')
         theme_btn = ('<button id="theme_toggle" class="icon-btn" onclick="pccToggleTheme(this)" title="Switch light / dark">☀️</button>')
         avatar = _topbar_avatar(user)
@@ -1898,14 +1910,15 @@ def page(title, user, body, flash=None, error=None):
     fonts_head = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
                   '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
                   '<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">')
-    return render_template_string(f"""<!doctype html><html lang="en"><head>
+    lock_cls = ' class="chat-lock"' if chat else ""
+    return render_template_string(f"""<!doctype html><html lang="en"{lock_cls}><head>
       <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       {OG_HEAD}
       {pwa_head}
       {fonts_head}
       <title>{{{{ title }}}} - BtwnFlghts</title><style>{CSS}</style>
       <script>try{{var t=localStorage.getItem('pcc_theme');if(t==='light')document.documentElement.classList.add('light');if(localStorage.getItem('pcc_map_hidden')==='1')document.documentElement.classList.add('hide-resultsmap');}}catch(e){{}}</script>{TZ_JS}</head>
-      <body><div class="{wrap_cls}">{chrome}{msg}{err}{body}{after}<div style="text-align:center;color:#7d94b0;font-size:12px;padding:20px 0 28px">© 2026 BtwnFlghts<div style="font-size:13px;margin-top:6px"><a href="/how-it-works" style="color:#7d94b0">How BtwnFlghts works</a> · <a href="/privacy" style="color:#7d94b0">Privacy</a> · <a href="/terms" style="color:#7d94b0">Terms</a></div></div></div></body></html>""",
+      <body{lock_cls}><div class="{wrap_cls}">{chrome}{msg}{err}{body}{after}<div class="page-foot" style="text-align:center;color:#7d94b0;font-size:12px;padding:20px 0 28px">© 2026 BtwnFlghts<div style="font-size:13px;margin-top:6px"><a href="/how-it-works" style="color:#7d94b0">How BtwnFlghts works</a> · <a href="/privacy" style="color:#7d94b0">Privacy</a> · <a href="/terms" style="color:#7d94b0">Terms</a></div></div></div></body></html>""",
       title=title)
 
 def esc(s):
@@ -5666,6 +5679,15 @@ var text=row.querySelector(".mc-bubble").textContent;
 setState(row,"sending");
 pollOnce(function(){if(row.getAttribute("data-mid").indexOf("tmp")===0)postMessage(row,text);});
 });
+/* The page itself never scrolls on this screen — only this list does.
+   When the on-screen keyboard opens or closes, the list region resizes;
+   if the user was at the newest message, stay pinned to it so the
+   composer and the latest bubble stay in view. If they are scrolled up
+   reading history, leave their position alone. */
+var stick=true;
+m.addEventListener("scroll",function(){stick=nearBottom();},{passive:true});
+if(window.visualViewport){window.visualViewport.addEventListener("resize",function(){if(stick)mcBottom();});}
+ta.addEventListener("focus",function(){if(stick)setTimeout(mcBottom,300);});
 upd();
 })();</script>"""
 
@@ -5947,7 +5969,7 @@ def conversation(user_id):
     shell = (f'<div class="mc-shell mc-showthread">'
              f'{_inbox_pane_html(user, db, active_id=other["id"])}'
              f'{_thread_pane_html(user, db, other)}</div>')
-    return page("Messages", user, shell)
+    return page("Messages", user, shell, chat=True)
 
 
 @app.route("/api/messages/<int:user_id>/updates")
