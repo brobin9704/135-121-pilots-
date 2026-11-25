@@ -1869,13 +1869,13 @@ OG_HEAD = ('<meta name="description" content="Crew-rated hotels, restaurants, at
            '<meta property="og:title" content="BtwnFlghts — Where pilots share real layover intel">'
            '<meta property="og:description" content="Crew-rated hotels, restaurants, attractions and FBOs near the airport, reviewed by pilots — plus see which friends are in the area. Free, for pilots and crew.">'
            '<meta property="og:url" content="https://btwnflghts.com/">'
-           '<meta property="og:image" content="https://btwnflghts.com/static/og-image.jpg">'
+           '<meta property="og:image" content="https://btwnflghts.com/static/og-image2.jpg">'
            '<meta property="og:image:width" content="1200">'
            '<meta property="og:image:height" content="630">'
            '<meta name="twitter:card" content="summary_large_image">'
            '<meta name="twitter:title" content="BtwnFlghts — Where pilots share real layover intel">'
            '<meta name="twitter:description" content="Crew-rated hotels, restaurants, attractions and FBOs near the airport, reviewed by pilots — plus see which friends are in the area. Free, for pilots and crew.">'
-           '<meta name="twitter:image" content="https://btwnflghts.com/static/og-image.jpg">')
+           '<meta name="twitter:image" content="https://btwnflghts.com/static/og-image2.jpg">')
 
 
 def page(title, user, body, flash=None, error=None, chat=False):
