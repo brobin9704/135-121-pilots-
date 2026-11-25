@@ -433,6 +433,7 @@ def init_db():
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'pilot'")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS layout TEXT NOT NULL DEFAULT 'tabs'")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_ver INTEGER NOT NULL DEFAULT 0")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS phone TEXT")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS address TEXT")
             cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS lat REAL")
@@ -473,6 +474,10 @@ def init_db():
             pass  # column already exists
         try:
             db.execute("ALTER TABLE users ADD COLUMN profile_photo TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN photo_ver INTEGER NOT NULL DEFAULT 0")
         except sqlite3.OperationalError:
             pass  # column already exists
         for _col in ("phone", "address", "lat", "lon"):
@@ -526,11 +531,16 @@ def _no_private_page_cache(resp):
     # Never let the browser keep app pages in its back-button cache:
     # after logout, Back re-requests the page and login_required sends
     # the user to /login instead of showing the stale logged-in page.
-    # Static assets are excluded (the service worker manages those).
-    if not request.path.startswith("/static/"):
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        resp.headers["Pragma"] = "no-cache"
-        resp.headers["Expires"] = "0"
+    # Static assets are excluded (the service worker manages those), and
+    # so are versioned profile photos: their URL changes with the photo,
+    # so the photo route's own long-lived cache header stands.
+    if request.path.startswith("/static/"):
+        return resp
+    if request.path.startswith("/profile-photo/") and request.args.get("v") is not None:
+        return resp
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
     return resp
 
 def is_current(checkin):
@@ -1955,16 +1965,48 @@ def _resize_photo_b64(f, max_px):
     except Exception:
         return None
 
-def _avatar_html(user_id, size=36):
+def _avatar_info(user_id):
+    """(name, has_photo, photo_ver) for avatar rendering, memoised per
+    request. Never selects the profile_photo blob itself — rendering a
+    page full of avatars used to haul every user's base64 photo out of
+    the database once per avatar."""
+    cache = getattr(g, "_avatar_info_cache", None)
+    if cache is None:
+        # Prime the whole cache with one skinny query: pages render
+        # avatars for many users at once.
+        cache = g._avatar_info_cache = {}
+        for row in get_db().execute(
+                "SELECT id, name, photo_ver, profile_photo IS NOT NULL AS has_photo "
+                "FROM users").fetchall():
+            cache[row["id"]] = (row["name"], bool(row["has_photo"]),
+                                row["photo_ver"] or 0)
+    if user_id not in cache:
+        row = get_db().execute(
+            "SELECT name, photo_ver, profile_photo IS NOT NULL AS has_photo "
+            "FROM users WHERE id=?", (user_id,)).fetchone()
+        cache[user_id] = None if row is None else (
+            row["name"], bool(row["has_photo"]), row["photo_ver"] or 0)
+    return cache[user_id]
+
+
+def _photo_url(user_id, ver):
+    """Versioned profile-photo URL: the version changes whenever the
+    photo does, so browsers may cache each version indefinitely."""
+    return url_for("profile_photo", user_id=user_id, v=ver)
+
+
+def _avatar_html(user_id, size=36, lazy=False):
     """Round profile photo, or a circle with the user's first initial."""
-    row = get_db().execute("SELECT name, profile_photo FROM users WHERE id=?", (user_id,)).fetchone()
-    if not row:
+    info = _avatar_info(user_id)
+    if info is None:
         return ""
-    initial = esc((row["name"] or "?").strip()[:1].upper() or "?")
+    name, has_photo, ver = info
+    initial = esc((name or "?").strip()[:1].upper() or "?")
     st = (f"width:{size}px;height:{size}px;border-radius:50%;object-fit:cover;"
           f"vertical-align:middle;margin-right:6px")
-    if row["profile_photo"]:
-        return (f'<img src="{url_for("profile_photo", user_id=user_id)}" alt="" '
+    if has_photo:
+        lz = ' loading="lazy"' if lazy else ""
+        return (f'<img src="{_photo_url(user_id, ver)}" alt=""{lz} '
                 f'style="{st}cursor:pointer" title="Tap to enlarge" onclick="showAvatar(this.src,event)">')
     return (f'<span style="display:inline-flex;align-items:center;justify-content:center;'
             f'{st}background:#334155;color:#e2e8f0;font-weight:700">{initial}</span>')
@@ -1973,12 +2015,11 @@ def _avatar_html(user_id, size=36):
 def _topbar_avatar(user):
     """Round profile photo (or first-initial circle) linking to My Profile."""
     try:
-        row = get_db().execute("SELECT profile_photo FROM users WHERE id=?", (user["id"],)).fetchone()
-        photo = row["profile_photo"] if row else None
+        info = _avatar_info(user["id"])
     except Exception:
-        photo = None
-    if photo:
-        inner = f'<img src="{url_for("profile_photo", user_id=user["id"])}" alt="My Profile">'
+        info = None
+    if info and info[1]:
+        inner = f'<img src="{_photo_url(user["id"], info[2])}" alt="My Profile">'
     else:
         initial = esc((user["name"] or "?").strip()[:1].upper() or "?")
         inner = f'<span class="avatar-initial">{initial}</span>'
@@ -2952,14 +2993,14 @@ def profile():
         return page("My Profile", user, profile_form(user), flash="Password changed.")
     if request.method == "POST" and request.form.get("form") == "photo":
         if request.form.get("remove") == "1":
-            db.execute("UPDATE users SET profile_photo=NULL WHERE id=?", (user["id"],))
+            db.execute("UPDATE users SET profile_photo=NULL, photo_ver=photo_ver+1 WHERE id=?", (user["id"],))
             db.commit()
             return page("My Profile", user, profile_form(current_user()), flash="Profile photo removed.")
         data = _resize_photo_b64(request.files.get("photo"), 512)
         if not data:
             return page("My Profile", user, profile_form(user),
                         error="That photo could not be used — try a JPG or PNG.")
-        db.execute("UPDATE users SET profile_photo=? WHERE id=?", (data, user["id"]))
+        db.execute("UPDATE users SET profile_photo=?, photo_ver=photo_ver+1 WHERE id=?", (data, user["id"]))
         db.commit()
         return page("My Profile", user, profile_form(current_user()), flash="Profile photo updated.")
     if request.method == "POST":
@@ -3261,7 +3302,7 @@ def admin_remove_photo(user_id):
     if not _is_admin(user):
         return page("Admin", user, '<div class="card"><p class="muted">Not available.</p></div>')
     db = get_db()
-    db.execute("UPDATE users SET profile_photo=NULL WHERE id=?", (user_id,))
+    db.execute("UPDATE users SET profile_photo=NULL, photo_ver=photo_ver+1 WHERE id=?", (user_id,))
     db.commit()
     return redirect(url_for("admin"))
 
@@ -4359,7 +4400,13 @@ def profile_photo(user_id):
     row = get_db().execute("SELECT profile_photo FROM users WHERE id=?", (user_id,)).fetchone()
     if not row or not row["profile_photo"]:
         return "Not found", 404
-    return Response(base64.b64decode(row["profile_photo"]), mimetype="image/jpeg")
+    resp = Response(base64.b64decode(row["profile_photo"]), mimetype="image/jpeg")
+    if request.args.get("v") is not None:
+        # Versioned URL (see _photo_url): this exact photo never changes
+        # under this URL, so the browser may keep it indefinitely instead
+        # of re-downloading every avatar on every page change.
+        resp.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+    return resp
 
 @app.route("/reviews/<int:review_id>/delete", methods=["POST"])
 @login_required
@@ -5207,6 +5254,58 @@ def _conversation_rows(user_id):
         (user_id, user_id, user_id)).fetchall()
 
 
+def _conversation_summaries(user_id):
+    """[{other_id, latest, unread}] per conversation partner, newest
+    conversation first — exactly what the inbox renders. Two queries
+    total; the old path fetched the user's entire message history (and
+    _messages_html fetched it twice per page load)."""
+    db = get_db()
+    agg = db.execute(
+        "SELECT CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END AS other_id, "
+        "MAX(id) AS max_id, "
+        "SUM(CASE WHEN recipient_id = ? AND is_read = 0 THEN 1 ELSE 0 END) AS unread "
+        "FROM messages WHERE sender_id = ? OR recipient_id = ? GROUP BY other_id",
+        (user_id, user_id, user_id, user_id)).fetchall()
+    if not agg:
+        return []
+    unread = {a["other_id"]: a["unread"] or 0 for a in agg}
+    ids = [a["max_id"] for a in agg]
+    latest = {}
+    rows = db.execute(
+        "SELECT m.*, u.name AS other_name FROM messages m "
+        "JOIN users u ON u.id = CASE WHEN m.sender_id = ? THEN m.recipient_id ELSE m.sender_id END "
+        f"WHERE m.id IN ({','.join('?' * len(ids))})",
+        (user_id, *ids)).fetchall()
+    for r in rows:
+        oid = r["recipient_id"] if r["sender_id"] == user_id else r["sender_id"]
+        latest[oid] = r
+    out = [{"other_id": a["other_id"], "latest": latest[a["other_id"]],
+            "unread": unread[a["other_id"]]}
+           for a in agg if a["other_id"] in latest]
+    # Match the old inbox ordering exactly: newest conversation first by
+    # its latest message's (created_at, id).
+    out.sort(key=lambda s: (s["latest"]["created_at"], s["latest"]["id"]),
+             reverse=True)
+    return out
+
+
+def _current_checkins_map(user_ids):
+    """{user_id: current checkin row or None} for many users in one
+    query — same pick as current_checkin() per user (newest first, the
+    first row that is_current)."""
+    ids = list(dict.fromkeys(i for i in user_ids if i))
+    out = {i: None for i in ids}
+    if not ids:
+        return out
+    rows = get_db().execute(
+        f"SELECT * FROM checkins WHERE user_id IN ({','.join('?' * len(ids))}) "
+        "ORDER BY created_at DESC, id DESC", tuple(ids)).fetchall()
+    for r in rows:
+        if out[r["user_id"]] is None and is_current(r):
+            out[r["user_id"]] = r
+    return out
+
+
 def _get_vapid_keys():
     """VAPID keypair for Web Push, generated once and kept in settings.
     Returns (private_key_b64url, public_key_b64url), or (None, None) if
@@ -5630,35 +5729,32 @@ def _loc_segments(same, theirs, meta_parts):
     return " · ".join(segs)
 
 
-def _inbox_pane_html(user, db, active_id=None):
+def _inbox_pane_html(user, db, active_id=None, summaries=None):
     """Left pane of the Messages shell: title + total unread, search, rows."""
-    rows = _conversation_rows(user["id"])
-    convos, order = {}, []
-    for r in rows:
-        oid = r["recipient_id"] if r["sender_id"] == user["id"] else r["sender_id"]
-        if oid not in convos:
-            convos[oid] = {"name": r["other_name"], "latest": r, "unread": 0}
-            order.append(oid)
-        if r["recipient_id"] == user["id"] and not r["is_read"]:
-            convos[oid]["unread"] += 1
-    total_unread = sum(c["unread"] for c in convos.values())
+    if summaries is None:
+        summaries = _conversation_summaries(user["id"])
+    total_unread = sum(s["unread"] for s in summaries)
     people = {u["id"]: u for u in db.execute(
         "SELECT id, name, airline, base, aircraft FROM users").fetchall()}
+    cmap = _current_checkins_map([user["id"]] + [s["other_id"] for s in summaries])
+    mine_c = cmap.get(user["id"])
     items = ""
-    for oid in order:
-        c = convos[oid]
+    for s in summaries:
+        oid = s["other_id"]
         o = people.get(oid)
-        name = (o["name"] if o else c["name"]) or ""
-        latest = c["latest"]
+        name = (o["name"] if o else s["latest"]["other_name"]) or ""
+        latest = s["latest"]
         dt = _msg_dt(latest["created_at"])
         snip = latest["body"] or ""
         if latest["sender_id"] == user["id"]:
             snip = "You: " + snip
-        unread = c["unread"]
+        unread = s["unread"]
         ucls = " unread" if unread else ""
         badge = f'<span class="mc-badge">{unread}</span>' if unread else ""
         acls = " active" if active_id == oid else ""
-        same, theirs = _msg_loc(user["id"], oid)
+        theirs = cmap.get(oid)
+        same = bool(mine_c and theirs and
+                    area_matches(theirs, mine_c["airport_code"], mine_c["city"]))
         dot = '<span class="mc-dot"></span>' if theirs else ""
         meta = _loc_segments(same, theirs, [o["airline"], o["base"], o["aircraft"]] if o else [])
         items += (
@@ -5678,7 +5774,7 @@ def _inbox_pane_html(user, db, active_id=None):
             f'aria-label="Search conversations by first letter" autocomplete="off">'
             f'<button type="button" class="mc-clear" id="mc_conv_clear" aria-label="Clear search" style="display:none">✕</button></div>'
             f'<p class="mc-search-meta" id="mc_conv_meta"></p></div>')
-    if order:
+    if summaries:
         lst = (f'<div class="mc-list" id="mc_list">{items}'
                f'<div class="mc-nomatch" id="mc_nomatch" style="display:none">'
                f'<p class="mc-nomatch-t">No matches</p><p class="muted">Nothing here starts with that yet. '
@@ -5695,11 +5791,9 @@ def _messages_html(user, db):
              '<div class="mc-sub">Pick a conversation</div></div></div>'
              '<div class="mc-empty"><h3>Pick a conversation</h3>'
              '<p class="muted">Choose someone on the left, or tap New to message one of your connections.</p></div></div>')
-    shell = f'<div class="mc-shell">{_inbox_pane_html(user, db)}{empty}</div>'
-    rows = _conversation_rows(user["id"])
-    convos = set()
-    for r in rows:
-        convos.add(r["recipient_id"] if r["sender_id"] == user["id"] else r["sender_id"])
+    summaries = _conversation_summaries(user["id"])
+    shell = f'<div class="mc-shell">{_inbox_pane_html(user, db, summaries=summaries)}{empty}</div>'
+    convos = {s["other_id"] for s in summaries}
     others = db.execute(
         "SELECT id, name, airline, base FROM users WHERE id != ? ORDER BY name", (user["id"],)).fetchall()
     fresh = [o for o in others if o["id"] not in convos]
@@ -5710,7 +5804,7 @@ def _messages_html(user, db):
                                             esc(o["base"] or "")] if x)
             new_items += (
                 f'<li class="person-row" data-search="{esc(((o["name"] or "").split() or [""])[0])}">'
-                f'<span class="p-ava">{_avatar_html(o["id"], 46)}</span>'
+                f'<span class="p-ava">{_avatar_html(o["id"], 46, lazy=True)}</span>'
                 f'<div class="p-main"><div class="p-name">'
                 f'<a href="{url_for("conversation", user_id=o["id"])}">{esc(o["name"])}</a></div>'
                 f'<div class="p-meta">{_ometa}</div></div>'
