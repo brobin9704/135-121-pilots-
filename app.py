@@ -2133,10 +2133,11 @@ SOUND_JS = """
 <script>(function(){
 var on = localStorage.getItem("pcc_sounds") !== "off";
 function soundsOn(){ return localStorage.getItem("pcc_sounds") !== "off"; }
-var seen = {}, lastCheckin = null, lastUnread = null, ac = null;
-function audio(){ if(!ac){ try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(ac.state==="suspended"){ ac.resume(); } return ac; }
-document.addEventListener("pointerdown", function(){ audio(); });
-function tone(f, delay, dur, vol){ var ctx = audio(); if(!ctx) return; var o = ctx.createOscillator(), g = ctx.createGain(); o.type = "sine"; o.frequency.value = f; var t = ctx.currentTime + delay; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur + 0.05); }
+var seen = {}, lastCheckin = null, lastUnread = null, primed = false, ac = null;
+function ensureAudio(){ if(!ac){ try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(ac && (ac.state === "suspended" || ac.state === "interrupted")){ var p = ac.resume(); if(p && p.catch){ p.catch(function(){}); } } return ac; }
+["pointerdown", "touchend", "keydown"].forEach(function(ev){ document.addEventListener(ev, function(){ ensureAudio(); }, {once: true, passive: true}); });
+function tone(f, delay, dur, vol){ var ctx = ensureAudio(); if(!ctx || ctx.state !== "running") return; var o = ctx.createOscillator(), g = ctx.createGain(); o.type = "sine"; o.frequency.value = f; var t = ctx.currentTime + delay; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur + 0.05); }
+function sendTone(){ var ctx = ensureAudio(); if(!ctx || ctx.state !== "running") return; var o = ctx.createOscillator(), g = ctx.createGain(); o.type = "sine"; var t = ctx.currentTime; o.frequency.setValueAtTime(540, t); o.frequency.exponentialRampToValueAtTime(880, t + 0.09); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.10, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.2); }
 var SOUND_PATTERNS = {
   ding: [[1046.5, 0, 0.3]],
   chime: [[880, 0, 0.25], [1318.5, 0.12, 0.25]],
@@ -2153,6 +2154,7 @@ function ringSound(){ return localStorage.getItem("pcc_ring_sound") || "phone"; 
 function ring(){ playPattern(ringSound()); }
 function ding(){ playPattern(msgSound()); }
 function audioAwake(){ return !!(ac && ac.state === "running"); }
+window.pccSendBlip = function(){ if(soundsOn()){ sendTone(); } };
 function requestSystemSound(title, body, url){
   try{
     var msg = {type:"pcc-notify", title:title, body:body, url:url};
@@ -2163,10 +2165,10 @@ function requestSystemSound(title, body, url){
 }
 function banner(text){ var b = document.getElementById("pcc_alert"); if(!b){ b = document.createElement("div"); b.id = "pcc_alert"; b.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 14px;border-radius:10px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:92%;text-align:center"; b.onclick = function(){ b.remove(); }; document.body.appendChild(b); } b.textContent = text + "  (tap to dismiss)"; }
 function check(){ if(document.visibilityState !== "visible") return; fetch("/api/updates").then(function(r){ return r.json(); }).then(function(d){
-if(lastCheckin === null){ lastCheckin = d.checkin_id; lastUnread = d.unread; d.friends.forEach(function(f){ seen[f.id] = 1; }); return; }
+if(!primed){ primed = true; lastCheckin = d.checkin_id; lastUnread = d.unread; d.friends.forEach(function(f){ seen[f.id] = 1; }); return; }
 if(d.checkin_id !== lastCheckin){ lastCheckin = d.checkin_id; seen = {}; d.friends.forEach(function(f){ seen[f.id] = 1; }); lastUnread = d.unread; return; }
 d.friends.forEach(function(f){ if(!seen[f.id]){ seen[f.id] = 1; if(soundsOn()){ if(!audioAwake()){ requestSystemSound(f.name + " checked in at " + f.airport + " / " + f.city, f.name + " just checked in at " + f.airport + " / " + f.city + ", where you are checked in too.", "/"); } ring(); } banner("🔔 " + f.name + " just checked in at " + f.airport + " · " + f.city); } });
-if(d.unread > lastUnread){ if(soundsOn()){ if(!audioAwake()){ requestSystemSound("BtwnFlghts", "You have a new message. Log in to read it.", d.latest_from_id ? "/messages/" + d.latest_from_id : "/"); } ding(); } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
+if(d.unread > lastUnread){ var watching = !!(d.latest_from_id && window.location.pathname === "/messages/" + d.latest_from_id); if(soundsOn() && !watching){ if(audioAwake()){ ding(); } else { requestSystemSound("BtwnFlghts", "You have a new message. Log in to read it.", d.latest_from_id ? "/messages/" + d.latest_from_id : "/"); } } banner("💬 New message" + (d.latest_from ? " from " + d.latest_from : "")); }
 lastUnread = d.unread;
 }).catch(function(){}); }
 setInterval(check, 10000);
@@ -2175,7 +2177,7 @@ if ("serviceWorker" in navigator) {
     if (ev.data && ev.data.type === "pcc-push") { check(); }
   });
 }
-document.addEventListener("visibilitychange", function(){ if(document.visibilityState === "visible"){ audio(); check(); } });
+document.addEventListener("visibilitychange", function(){ if(document.visibilityState === "visible"){ ensureAudio(); check(); } });
 check();
 var t = document.getElementById("sound_toggle"); if(t){ t.textContent = on ? "🔔" : "🔕"; }
 window.pccToggleSound = function(btn){ on = !on; localStorage.setItem("pcc_sounds", on ? "on" : "off"); btn.textContent = on ? "🔔" : "🔕"; };
@@ -5415,7 +5417,8 @@ count.classList.toggle("warn",n>1850&&n<=2000);
 count.classList.toggle("over",n>2000);
 }
 ta.addEventListener("input",upd);
-ta.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!send.disabled){if(form.requestSubmit){form.requestSubmit();}else{form.submit();}}}});
+if(form){form.addEventListener("submit",function(){if(window.pccSendBlip)window.pccSendBlip();});}
+ta.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!send.disabled){if(form.requestSubmit){form.requestSubmit();}else{if(window.pccSendBlip)window.pccSendBlip();form.submit();}}}});
 upd();
 })();</script>"""
 
