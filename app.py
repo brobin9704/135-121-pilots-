@@ -903,6 +903,88 @@ def _collapse_same_address(results):
             out.append(max(cl, key=_info_score))
     return out
 
+def _name_tokens(name):
+    """Core word list of a place name: the same spelling cleanup and
+    generic-word stripping _normalize_place_name applies, but kept as
+    separate words so the proximity pass can test overlap."""
+    s = (name or "").lower()
+    s = s.replace("’", "'").replace("‘", "'").replace("´", "'")
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    words = [w for w in s.split() if w not in _GENERIC_NAME_WORDS]
+    if not words:  # the whole name is generic words ("The Bistro") — keep it
+        words = s.split()
+    return words
+
+def _core_names_match(name_a, name_b):
+    """Same place under two name spellings, for the proximity pass: the
+    normalized names are equal or one contains the other
+    ('extendedstayamerica' inside 'extendedstayamericaportlandhillsboro'),
+    one name's core words all sit inside the other's ('Courtyard
+    Hillsboro' inside 'Courtyard by Marriott Portland Hillsboro').
+    Partial overlap is NOT enough: 'Embassy Suites by Hilton' and
+    'Homewood Suites by Hilton' share three words but are different
+    hotels, so they never match."""
+    na, nb = _normalize_place_name(name_a), _normalize_place_name(name_b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    if len(na) >= 5 and len(nb) >= 5 and (na in nb or nb in na):
+        return True
+    ta, tb = set(_name_tokens(name_a)), set(_name_tokens(name_b))
+    if not ta or not tb:
+        return False
+    small, big = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    return len(small) >= 2 and small <= big
+
+def _street_number(addr):
+    """Leading house number of an address string ('3050 NE Stucki Pl' ->
+    '3050'), or '' when the address doesn't start with one."""
+    m = re.match(r"\s*(\d+)", addr or "")
+    return m.group(1) if m else ""
+
+def _same_place_nearby(a, b):
+    """Proximity-pass test: two cards are the same place when their pins
+    are <= 0.15 mi apart AND their core names match. A shared phone
+    number is NOT enough on its own: distinct businesses routinely share
+    one number (a hotel switchboard feeding its in-house restaurants, a
+    food hall), so the phone only ever corroborates a name match — the
+    same standard _same_place uses. And when both addresses carry a
+    street number and the numbers differ, the pair is vetoed outright:
+    a bad pin can put two branches of one chain a few hundred feet
+    apart on paper while their addresses prove them separate."""
+    try:
+        dist = haversine_miles(float(a["lat"]), float(a["lon"]),
+                               float(b["lat"]), float(b["lon"]))
+    except (KeyError, TypeError, ValueError):
+        return False
+    if dist > 0.15:
+        return False
+    na, nb = _street_number(a.get("address")), _street_number(b.get("address"))
+    if na and nb and na != nb:
+        return False
+    return _core_names_match(a.get("name"), b.get("name"))
+
+def _collapse_nearby_duplicates(results):
+    """Second dedupe pass, run after _collapse_same_address: the same
+    place listed by two sources whose records disagree on the address
+    string (suffix spelled 'Avenue' by one and shortened to 'Pl' by the
+    other, a directional flipped) with pins a few hundred feet apart, so
+    neither the name+pin key nor the address grouping caught it — the
+    two Courtyard Portland Hillsboro cards. Clusters such near matches
+    and keeps the most complete card, exactly as the address collapse
+    does."""
+    clusters = []
+    for r in results:
+        for cl in clusters:
+            if any(_same_place_nearby(r, other) for other in cl):
+                cl.append(r)
+                break
+        else:
+            clusters.append([r])
+    # max keeps the first (highest-priority source) on a tie.
+    return [max(cl, key=_info_score) for cl in clusters]
+
 def _merge_place_results(*sources):
     """Crosscheck merge: union of sources, deduped by name + location.
 
@@ -919,6 +1001,7 @@ def _merge_place_results(*sources):
                 continue
             merged.setdefault(key, r)
     results = _collapse_same_address(list(merged.values()))
+    results = _collapse_nearby_duplicates(results)
     return sorted(results, key=lambda x: x.get("distance", 999))
 
 
