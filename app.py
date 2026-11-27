@@ -1278,6 +1278,8 @@ nav a.active{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 10
 .you-pin-wrap{background:none;border:none}
 .you-pin-shape{position:relative;width:24px;height:24px;background:#4fc3ff;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .you-pin-shape:after{content:"";position:absolute;left:6px;top:6px;width:8px;height:8px;background:#fff;border-radius:50%}
+.friend-pin-wrap{background:none;border:none}
+.friend-pin{width:30px;height:30px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1}
 .topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:10px 4px;background:rgba(4,24,46,.72);backdrop-filter:blur(8px);border-bottom:1px solid rgba(140,200,255,.22)}
 .brand-logo{display:inline-flex;align-items:center;flex:0 0 auto}
 .brand-logo img{height:40px;width:auto;display:block}
@@ -1703,9 +1705,26 @@ LOCMAP_JS = """
 <script>
 (function(){
   var btn=document.getElementById('locmap_btn'),msg=document.getElementById('locmap_msg'),div=document.getElementById('locmap');
+  var fbtn=document.getElementById('locmap_friends_btn'),fmsg=document.getElementById('locmap_friends_msg');
   if(!btn)return;
+  // Friends currently checked in, grouped by airport — rendered server-side
+  // from their stored check-ins (see friends_on_map). The phone's own
+  // coordinates never leave the device; they are only used locally to fit
+  // the map view around the markers.
+  var FRIENDS=[];
+  var fdata=document.getElementById('locmap_friends_data');
+  if(fdata){ try{ FRIENDS=JSON.parse(fdata.textContent||'[]'); }catch(e){ FRIENDS=[]; } }
   var map=null,loaded=false,loading=false;
+  var meMarker=null,meCircle=null,myPos=null;
+  var friendGroup=null,friendsOn=false,savedView=null,pendingFriends=false,noteTimer=null;
   function say(t){ if(msg)msg.textContent=t; }
+  function fsay(t){ if(fmsg)fmsg.textContent=t; }
+  function note(t){
+    fsay(t);
+    if(noteTimer)clearTimeout(noteTimer);
+    noteTimer=setTimeout(function(){ fsay(''); },5000);
+  }
+  function escHtml(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
   function loadLeaflet(cb){
     if(loaded)return cb();
     if(loading){ var iv=setInterval(function(){ if(loaded){clearInterval(iv);cb();} },200); return; }
@@ -1719,12 +1738,48 @@ LOCMAP_JS = """
     s.onerror=function(){ loading=false; say('Could not load the map. Check your connection and try again.'); };
     document.head.appendChild(s);
   }
+  function friendIcon(){
+    return L.divIcon({className:'friend-pin-wrap',html:'<div class="friend-pin">\\uD83D\\uDC64</div>',iconSize:[30,30],iconAnchor:[15,15]});
+  }
+  function fitFriends(){
+    var pts=FRIENDS.map(function(g){return [g.lat,g.lon];});
+    if(myPos)pts.push([myPos.lat,myPos.lon]);
+    if(pts.length>1)map.fitBounds(pts,{padding:[36,36]});
+    else if(pts.length)map.setView(pts[0],10);
+  }
+  function showFriends(){
+    if(!FRIENDS.length){ note('No friends checked in right now'); return; }
+    if(!map){ pendingFriends=true; locate(); return; }
+    if(!friendGroup){
+      friendGroup=L.layerGroup();
+      FRIENDS.forEach(function(g){
+        var lines=g.names.map(function(n){
+          return '<strong>'+escHtml(n)+'</strong> \\u2014 '+escHtml(g.code)+' \\u00B7 '+escHtml(g.city)+(g.state?', '+escHtml(g.state):'');
+        });
+        L.marker([g.lat,g.lon],{icon:friendIcon()}).bindPopup(lines.join('<br>')).addTo(friendGroup);
+      });
+    }
+    savedView={center:map.getCenter(),zoom:map.getZoom()};
+    friendGroup.addTo(map);
+    friendsOn=true;
+    if(fbtn)fbtn.textContent='Hide friends';
+    fsay('');
+    fitFriends();
+  }
+  function hideFriends(){
+    if(map&&friendGroup)map.removeLayer(friendGroup);
+    friendsOn=false;
+    if(fbtn)fbtn.textContent='Show friends';
+    if(map&&savedView)map.setView(savedView.center,savedView.zoom);
+    savedView=null;
+  }
   function locate(){
     if(!navigator.geolocation){ say('Location is not available on this device.'); return; }
     say('Getting your location\u2026');
     navigator.geolocation.getCurrentPosition(function(pos){
       loadLeaflet(function(){
         var lat=pos.coords.latitude,lon=pos.coords.longitude;
+        myPos={lat:lat,lon:lon};
         div.style.display='block';
         if(!map){
           map=L.map('locmap').setView([lat,lon],14);
@@ -1732,18 +1787,23 @@ LOCMAP_JS = """
           L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
             maxZoom:19,attribution:'\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           }).addTo(map);
-        }else{ map.setView([lat,lon],14); }
-        map.eachLayer(function(ly){ if(ly instanceof L.Marker||ly instanceof L.Circle)map.removeLayer(ly); });
-        L.marker([lat,lon]).addTo(map).bindPopup('You are here').openPopup();
-        if(pos.coords.accuracy)L.circle([lat,lon],{radius:pos.coords.accuracy}).addTo(map);
+        }else if(!friendsOn){ map.setView([lat,lon],14); }
+        if(meMarker)map.removeLayer(meMarker);
+        if(meCircle)map.removeLayer(meCircle);
+        meMarker=L.marker([lat,lon]).addTo(map).bindPopup('You are here');
+        if(pos.coords.accuracy)meCircle=L.circle([lat,lon],{radius:pos.coords.accuracy}).addTo(map);
+        if(friendsOn){ fitFriends(); }else{ meMarker.openPopup(); }
         setTimeout(function(){ map.invalidateSize(); },100);
         say('');
+        if(pendingFriends){ pendingFriends=false; showFriends(); }
       });
     },function(err){
+      pendingFriends=false;
       say(err.code===1?'Location permission was denied.':'Could not get your location. Try again.');
     },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
   }
   btn.addEventListener('click',locate);
+  if(fbtn)fbtn.addEventListener('click',function(){ if(friendsOn)hideFriends(); else showFriends(); });
   locate();
 })();
 </script>
@@ -1753,6 +1813,8 @@ LOCMAP_HTML = """<div class="card"><h2>📍 My Location</h2>
       <p class="muted">Show your phone\u2019s current location on a map. One-time fix \u2014 your coordinates stay on your phone and are never stored.</p>
       <p><button type="button" id="locmap_btn">Show my location on a map</button></p>
       <p class="muted" id="locmap_msg"></p>
+      <p><button type="button" id="locmap_friends_btn">Show friends</button></p>
+      <p class="muted" id="locmap_friends_msg"></p>
       <div id="locmap" style="display:none;height:320px;border-radius:12px;overflow:hidden"></div></div>"""
 
 FINDME_JS = """<script>
@@ -3477,10 +3539,13 @@ def index():
              f'<a class="qa-tile" href="{url_for("attractions")}"><span class="e">🎡</span>Attractions</a>'
              f'<a class="qa-tile" href="{url_for("messages")}"><span class="e">💬</span>Messages{msg_badge}</a>'
              f'</div></div>')
+    fmap_json = json.dumps(friends_on_map(db, user)).replace("<", "\\u003c")
+    fmap_tag = f'<script type="application/json" id="locmap_friends_data">{fmap_json}</script>'
     body = (hero
             + '<div class="home-grid">'
             + current_checkin_html(checkin)
             + LOCMAP_HTML
+            + fmap_tag
             + '<div class="home-stack">' + friends_nearby_html(db, user, checkin) + quick + '</div>'
             + '</div>'
             + LOCMAP_JS
@@ -3801,6 +3866,34 @@ def current_checkin_html(checkin):
       <div class="loc-actions"><a href="{url_for('edit_checkin')}" class="ghost-btn">✏️ Edit location</a><a href="{url_for('board')}" class="ghost-btn">🎯 Locate again</a></div>
       <form method="post" action="{url_for('board')}" onsubmit="return confirm('Check out of this location?')"><input type="hidden" name="action" value="checkout">
       <button type="submit">✈️ Leaving the area</button></form></div>"""
+
+
+def friends_on_map(db, user):
+    """Friends currently checked in, grouped by airport, for the Home map.
+
+    Returns [{code, city, state, lat, lon, names}] — one entry per airport
+    that has bundled coordinates. Current check-ins only: current_checkin
+    already excludes upcoming (future) and checked-out stays. Coordinates
+    come from the bundled airport dataset, never from anyone's phone."""
+    friend_rows = db.execute(
+        "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
+    ).fetchall()
+    groups = {}
+    for fr in friend_rows:
+        fc = current_checkin(fr["id"])
+        if not fc:
+            continue
+        code = (fc["airport_code"] or "").strip().upper()
+        coords = AIRPORT_COORDS.get(code)
+        if not coords:
+            continue
+        g = groups.get(code)
+        if g is None:
+            g = groups[code] = {"code": code, "city": fc["city"] or "",
+                                "state": fc["state"] or "",
+                                "lat": coords[0], "lon": coords[1], "names": []}
+        g["names"].append(fr["name"])
+    return list(groups.values())
 
 
 def friends_nearby_html(db, user, checkin):
