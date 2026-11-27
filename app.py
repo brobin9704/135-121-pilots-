@@ -1279,7 +1279,11 @@ nav a.active{background:linear-gradient(135deg,#56c2ff 0%,#0086E8 55%,#0057b8 10
 .you-pin-shape{position:relative;width:24px;height:24px;background:#4fc3ff;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .you-pin-shape:after{content:"";position:absolute;left:6px;top:6px;width:8px;height:8px;background:#fff;border-radius:50%}
 .friend-pin-wrap{background:none;border:none}
-.friend-pin{width:30px;height:30px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1}
+.friend-pin2{position:relative;width:40px;height:40px}
+.friend-pin-face{position:absolute;inset:0;border-radius:50%;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);background:#334155;box-sizing:border-box}
+.friend-pin-face img{width:100%;height:100%;object-fit:cover;display:block;position:relative;z-index:1}
+.friend-pin-initial{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#e2e8f0;font-weight:700;font-size:17px}
+.friend-pin-count{position:absolute;top:-3px;right:-3px;z-index:2;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:#0086E8;color:#fff;border:1.5px solid #fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:10px 4px;background:rgba(4,24,46,.72);backdrop-filter:blur(8px);border-bottom:1px solid rgba(140,200,255,.22)}
 .brand-logo{display:inline-flex;align-items:center;flex:0 0 auto}
 .brand-logo img{height:40px;width:auto;display:block}
@@ -1738,8 +1742,14 @@ LOCMAP_JS = """
     s.onerror=function(){ loading=false; say('Could not load the map. Check your connection and try again.'); };
     document.head.appendChild(s);
   }
-  function friendIcon(){
-    return L.divIcon({className:'friend-pin-wrap',html:'<div class="friend-pin">\\uD83D\\uDC64</div>',iconSize:[30,30],iconAnchor:[15,15]});
+  function friendIcon(g){
+    var f=(g.friends&&g.friends.length)?g.friends[0]:null;
+    var initial=f?escHtml(f.initial||'?'):'?';
+    var face='<span class="friend-pin-initial">'+initial+'</span>';
+    if(f&&f.photo)face+='<img src="'+escHtml(f.photo)+'" alt="" onerror="this.remove()">';
+    var badge=(g.friends&&g.friends.length>1)?'<span class="friend-pin-count">'+g.friends.length+'</span>':'';
+    var html='<div class="friend-pin2"><div class="friend-pin-face">'+face+'</div>'+badge+'</div>';
+    return L.divIcon({className:'friend-pin-wrap',html:html,iconSize:[40,40],iconAnchor:[20,20]});
   }
   function fitFriends(){
     var pts=FRIENDS.map(function(g){return [g.lat,g.lon];});
@@ -1756,7 +1766,7 @@ LOCMAP_JS = """
         var lines=g.names.map(function(n){
           return '<strong>'+escHtml(n)+'</strong> \\u2014 '+escHtml(g.code)+' \\u00B7 '+escHtml(g.city)+(g.state?', '+escHtml(g.state):'');
         });
-        L.marker([g.lat,g.lon],{icon:friendIcon()}).bindPopup(lines.join('<br>')).addTo(friendGroup);
+        L.marker([g.lat,g.lon],{icon:friendIcon(g)}).bindPopup(lines.join('<br>')).addTo(friendGroup);
       });
     }
     savedView={center:map.getCenter(),zoom:map.getZoom()};
@@ -3871,10 +3881,14 @@ def current_checkin_html(checkin):
 def friends_on_map(db, user):
     """Friends currently checked in, grouped by airport, for the Home map.
 
-    Returns [{code, city, state, lat, lon, names}] — one entry per airport
-    that has bundled coordinates. Current check-ins only: current_checkin
-    already excludes upcoming (future) and checked-out stays. Coordinates
-    come from the bundled airport dataset, never from anyone's phone."""
+    Returns [{code, city, state, lat, lon, names, friends}] — one entry
+    per airport that has bundled coordinates. friends carries one
+    {name, photo, initial} per friend for the map pins: photo is the
+    versioned profile-photo URL (via _avatar_info/_photo_url, which
+    never select the photo blob) or None when the friend has no photo.
+    Current check-ins only: current_checkin already excludes upcoming
+    (future) and checked-out stays. Coordinates come from the bundled
+    airport dataset, never from anyone's phone."""
     friend_rows = db.execute(
         "SELECT u.* FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?", (user["id"],)
     ).fetchall()
@@ -3891,8 +3905,16 @@ def friends_on_map(db, user):
         if g is None:
             g = groups[code] = {"code": code, "city": fc["city"] or "",
                                 "state": fc["state"] or "",
-                                "lat": coords[0], "lon": coords[1], "names": []}
+                                "lat": coords[0], "lon": coords[1],
+                                "names": [], "friends": []}
         g["names"].append(fr["name"])
+        info = _avatar_info(fr["id"])
+        photo = None
+        if info and info[1]:
+            photo = _photo_url(fr["id"], info[2])
+        initial = (fr["name"] or "?").strip()[:1].upper() or "?"
+        g["friends"].append({"name": fr["name"], "photo": photo,
+                             "initial": initial})
     return list(groups.values())
 
 
